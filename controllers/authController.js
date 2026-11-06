@@ -44,6 +44,15 @@ const manejarErrorValidacion = (error, res) => {
     });
 };
 
+const rollbackError = async (transaction, res, status, message) => {
+    await transaction.rollback();
+    return res.status(status).json({ success: false, message });
+};
+
+const errorSimple = (res, status, message) => {
+    return res.status(status).json({ success: false, message });
+};
+
 // VALIDADORES REUTILIZABLES
 const REGEX_TELEFONO = /^3\d{9}$/;
 const REGEX_CIUDAD = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/;
@@ -101,6 +110,37 @@ function esSecuencia(valor) {
   return ascendente || descendente;
 }
 
+const validarCamposOpcionales = ({ telefono, ciudad, email }) => {
+    if (telefono && !validarTelefono(telefono)) {
+        return { valido: false, mensaje: 'El teléfono debe empezar por 3 y tener 10 dígitos' };
+    }
+    if (ciudad && !validarCiudad(ciudad)) {
+        return { valido: false, mensaje: 'La ciudad solo puede contener letras y espacios' };
+    }
+    if (email && !validarEmail(email)) {
+        return { valido: false, mensaje: 'El email no tiene un formato válido' };
+    }
+    return { valido: true };
+};
+
+const verificarEmailDuplicado = async ({ email, transaction = null }) => {
+    const emailLimpio = email.trim().toLowerCase();
+    const existente = await Usuario.findOne({ where: { email: emailLimpio }, transaction });
+    return existente ? { duplicado: true, emailLimpio } : { duplicado: false, emailLimpio };
+};
+
+const verificarDocumentoDuplicado = async ({ documento, transaction = null }) => {
+    const existente = await Usuario.findOne({ where: { documento }, transaction });
+    return !!existente;
+};
+
+const INCLUDE_ROLES = {
+    model: Role,
+    as: 'roles',
+    through: { attributes: [] },
+    attributes: ['nombre']
+};
+
 // LOGIN
 export const login = async (req, res) => {
     try {
@@ -117,44 +157,25 @@ export const login = async (req, res) => {
 
 const usuario = await Usuario.findOne({
     where: { email: emailLimpio },
-    include: [{
-        model: Role,
-        as: 'roles',
-        through: { attributes: [] },
-        attributes: ['nombre']
-    }]
+    include: [INCLUDE_ROLES]
 });
 
         if (!usuario) {
-            console.log('Usuario no encontrado:', email);
-            return res.status(401).json({
-                success: false,
-                message: 'Credenciales inválidas'
-            });
+            return errorSimple(res, 401, 'Credenciales inválidas');
         }
 
         const isMatch = await usuario.comparePassword(contrasena);
-        console.log('¿Contraseña correcta?', isMatch);
 
         if (!isMatch) {
-            console.log('Contraseña incorrecta para:', email);
-            return res.status(401).json({
-                success: false,
-                message: 'Credenciales inválidas'
-            });
+            return errorSimple(res, 401, 'Credenciales inválidas');
         }
 
         if (usuario.estado !== 'ACTIVO') {
-            return res.status(403).json({
-                success: false,
-                message: 'Usuario inactivo. Contacta al administrador.'
-            });
+            return errorSimple(res, 403, 'Usuario inactivo. Contacta al administrador.');
         }
 
          const { token } = generateToken(usuario.id_usuario);
         const roles = usuario.roles?.map(rol => rol.nombre) || [];
-
-        console.log(`Login exitoso: ${usuario.nombre_completo}`);
 
         res.json({
             success: true,
@@ -195,83 +216,36 @@ export const register = async (req, res) => {
         } = req.body;
 
         if (!nombre_completo || !email || !contrasena) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: 'Nombre, email y contraseña son requeridos'
-            });
+            return rollbackError(transaction, res, 400, 'Nombre, email y contraseña son requeridos');
         }
 
         if (contrasena.length < 8) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: 'La contraseña debe tener al menos 8 caracteres'
-            });
+            return rollbackError(transaction, res, 400, 'La contraseña debe tener al menos 8 caracteres');
         }
 
-        if (!validarEmail(email)) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: 'El email no tiene un formato válido'
-            });
-        }
-
-        if (telefono && !validarTelefono(telefono)) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: 'El teléfono debe empezar por 3 y tener 10 dígitos'
-            });
-        }
-
-        if (ciudad && !validarCiudad(ciudad)) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: 'La ciudad solo puede contener letras y espacios'
-            });
+        const validacion = validarCamposOpcionales({ telefono, ciudad, email });
+        if (!validacion.valido) {
+            return rollbackError(transaction, res, 400, validacion.mensaje);
         }
 
         if (documento) {
-  const docValidacion = validarDocumento(documento);
-  if (!docValidacion.valido) {
-    await transaction.rollback();
-    return res.status(400).json({
-      success: false,
-      message: docValidacion.msg
-    });
-  }
-}
+            const docValidacion = validarDocumento(documento);
+            if (!docValidacion.valido) {
+                return rollbackError(transaction, res, 400, docValidacion.msg);
+            }
+        }
 
-        const emailLimpio = email.trim().toLowerCase();
-
-const emailExistente = await Usuario.findOne({
-    where: { email: emailLimpio },
-    transaction
-});
-
-        if (emailExistente) {
-            await transaction.rollback();
-            return res.status(409).json({
-                success: false,
-                message: 'El email ya está registrado'
-            });
+        const { duplicado: emailDuplicado, emailLimpio } = await verificarEmailDuplicado({
+            email, transaction
+        });
+        if (emailDuplicado) {
+            return rollbackError(transaction, res, 409, 'El email ya está registrado');
         }
 
         if (documento) {
-            const documentoExistente = await Usuario.findOne({
-                where: { documento },
-                transaction
-            });
-
-            if (documentoExistente) {
-                await transaction.rollback();
-                return res.status(409).json({
-                    success: false,
-                    message: 'El documento ya está registrado'
-                });
+            const docDuplicado = await verificarDocumentoDuplicado({ documento, transaction });
+            if (docDuplicado) {
+                return rollbackError(transaction, res, 409, 'El documento ya está registrado');
             }
         }
 
@@ -323,8 +297,6 @@ const emailExistente = await Usuario.findOne({
         const roles = usuarioConRoles.roles?.map(r => r.nombre) || [];
         const { token } = generateToken(usuario.id_usuario);
 
-        console.log(`Usuario registrado: ${usuario.nombre_completo}`);
-
         res.status(201).json({
             success: true,
             message: 'Usuario registrado exitosamente',
@@ -352,19 +324,11 @@ export const verifyToken = async (req, res) => {
     try {
         const usuario = await Usuario.findByPk(req.user.id, {
             attributes: ['id_usuario', 'nombre_completo', 'email', 'telefono', 'ciudad', 'estado'],
-            include: [{
-                model: Role,
-                as: 'roles',
-                through: { attributes: [] },
-                attributes: ['nombre']
-            }]
+            include: [INCLUDE_ROLES]   
         });
 
         if (!usuario) {
-            return res.status(404).json({
-                success: false,
-                message: 'Usuario no encontrado'
-            });
+            return errorSimple(res, 404, 'Usuario no encontrado');
         }
 
         const roles = usuario.roles?.map(role => role.nombre) || [];
@@ -406,20 +370,13 @@ export const solicitarRecuperacion = async (req, res) => {
     try {
         const { email } = req.body;
 
-        console.log('Solicitud de recuperación para:', email);
-
         if (!email) {
-            return res.status(400).json({
-                success: false,
-                message: 'El email es requerido'
-            });
+            return errorSimple(res, 400, 'El email es requerido');
         }
 
-        if (!validarEmail(email)) {
-            return res.status(400).json({
-                success: false,
-                message: 'El email no tiene un formato válido'
-            });
+        const validacion = validarCamposOpcionales({ email });
+        if (!validacion.valido) {
+            return errorSimple(res, 400, validacion.mensaje);
         }
 
         const emailLimpio = email.trim().toLowerCase();
@@ -429,10 +386,7 @@ const usuario = await Usuario.findOne({
 });
 
         if (!usuario) {
-             return res.status(404).json({
-                success: false,
-                message: 'No existe una cuenta con este email'
-            });
+             return errorSimple(res, 404, 'No existe una cuenta con este email');
         }
 
         const resetToken = crypto.randomBytes(32).toString('hex');
@@ -444,9 +398,6 @@ const usuario = await Usuario.findOne({
         });
 
         const resetLink = `http://192.168.0.7:5000/reset-password?token=${resetToken}`;
-
-        console.log('Token generado para:', email);
-        console.log('Enlace:', resetLink);
 
         // INTENTAR ENVIAR AL USUARIO PRIMERO
 
@@ -461,22 +412,16 @@ const usuario = await Usuario.findOne({
                 emailOriginal: usuario.email,
                 esFalso: false
             });
-            console.log(' Correo enviado a:', usuario.email);
             envioExitoso = true;
         } catch (emailError) {
-
-            // SI EL CORREO REBOTA (EMAIL NO EXISTE)
-
-            console.log(' Error al enviar a:', usuario.email);
-            console.log('Error:', emailError.message);
             
             // Verificar si es error de "usuario no existe"
-            if (emailError.message?.includes('550') || 
-                emailError.message?.includes('Recipient address rejected') ||
-                emailError.message?.includes('User unknown') ||
-                emailError.message?.includes('Invalid recipient')) {
-                
-                console.log(' El email NO EXISTE en la vida real');
+            const reboto = emailError.message?.includes('550') ||
+                           emailError.message?.includes('Recipient address rejected') ||
+                           emailError.message?.includes('User unknown') ||
+                           emailError.message?.includes('Invalid recipient');
+
+            if (reboto) {
                 emailFalso = true;
                 
                 // Enviar al admin
@@ -487,7 +432,6 @@ const usuario = await Usuario.findOne({
                     emailOriginal: usuario.email,
                     esFalso: true
                 });
-                console.log(' Reenviado al administrador');
                 envioExitoso = true;
             } else {
                 // Otro tipo de error
@@ -496,10 +440,7 @@ const usuario = await Usuario.findOne({
         }
 
         if (!envioExitoso) {
-            return res.status(500).json({
-                success: false,
-                message: 'Error al enviar el correo de recuperación'
-            });
+            return errorSimple(res, 500, 'Error al enviar el correo de recuperación');
         }
 
         res.json({
@@ -570,13 +511,8 @@ export const verificarTokenRecuperacion = async (req, res) => {
     try {
         const { token } = req.params;
 
-        console.log('Verificando token:', token);
-
         if (!token) {
-            return res.status(400).json({
-                success: false,
-                message: 'Token requerido'
-            });
+            return errorSimple(res, 400, 'Token requerido');
         }
 
         const usuario = await Usuario.findOne({
@@ -589,14 +525,8 @@ export const verificarTokenRecuperacion = async (req, res) => {
         });
 
         if (!usuario) {
-            console.log('Token inválido o expirado');
-            return res.status(400).json({
-                success: false,
-                message: 'Token inválido o expirado'
-            });
+            return errorSimple(res, 400, 'Token inválido o expirado');
         }
-
-        console.log('Token válido para:', usuario.email);
 
         res.json({
             success: true,
@@ -617,20 +547,12 @@ export const resetearPassword = async (req, res) => {
     try {
         const { token, nueva_contrasena } = req.body;
 
-        console.log('Reset de contraseña solicitado');
-
         if (!token || !nueva_contrasena) {
-            return res.status(400).json({
-                success: false,
-                message: 'Token y nueva contraseña son requeridos'
-            });
+            return errorSimple(res, 400, 'Token y nueva contraseña son requeridos');
         }
 
         if (nueva_contrasena.length < 8) {
-            return res.status(400).json({
-                success: false,
-                message: 'La contraseña debe tener al menos 8 caracteres'
-            });
+            return errorSimple(res, 400, 'La contraseña debe tener al menos 8 caracteres');
         }
 
         const usuario = await Usuario.findOne({
@@ -643,20 +565,12 @@ export const resetearPassword = async (req, res) => {
         });
 
         if (!usuario) {
-            console.log('Token inválido o expirado');
-            return res.status(400).json({
-                success: false,
-                message: 'Token inválido o expirado. Solicita un nuevo enlace.'
-            });
+            return errorSimple(res, 400, 'Token inválido o expirado. Solicita un nuevo enlace.');
         }
-
-        console.log('Usuario encontrado:', usuario.email);
 
         // GENERAR HASH
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(nueva_contrasena, salt);
-
-        console.log('Hash generado:', hashedPassword.substring(0, 30) + '...');
 
         // ACTUALIZAR USANDO UPDATE DIRECTO
         await Usuario.update(
@@ -673,17 +587,11 @@ export const resetearPassword = async (req, res) => {
         // VERIFICAR QUE SE GUARDÓ CORRECTAMENTE
         const usuarioVerificado = await Usuario.findByPk(usuario.id_usuario);
         const testMatch = await usuarioVerificado.comparePassword(nueva_contrasena);
-        console.log('Prueba de login inmediata:', testMatch);
 
         if (!testMatch) {
             console.error('ERROR: La contraseña no se guardó correctamente');
-            return res.status(500).json({
-                success: false,
-                message: 'Error al guardar la contraseña. Intenta nuevamente.'
-            });
+            return errorSimple(res, 500, 'Error al guardar la contraseña. Intenta nuevamente.');
         }
-
-        console.log(`Contraseña actualizada exitosamente para: ${usuario.email}`);
 
         res.json({
             success: true,
