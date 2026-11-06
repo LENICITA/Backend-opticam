@@ -45,6 +45,15 @@ const manejarErrorValidacion = (error, res) => {
     });
 };
 
+const rollbackError = async (transaction, res, status, message) => {
+    await transaction.rollback();
+    return res.status(status).json({ success: false, message });
+};
+
+const errorSimple = (res, status, message) => {
+    return res.status(status).json({ success: false, message });
+};
+
 // VALIDADORES REUTILIZABLES
 const REGEX_TELEFONO = /^3\d{9}$/;
 const REGEX_CIUDAD = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/;
@@ -102,6 +111,87 @@ function esSecuencia(valor) {
   return ascendente || descendente;
 }
 
+const validarCamposOpcionales = ({ telefono, ciudad, email }) => {
+  if (telefono && !validarTelefono(telefono)) {
+    return { valido: false, mensaje: 'El teléfono debe empezar por 3 y tener 10 dígitos' };
+  }
+  if (ciudad && !validarCiudad(ciudad)) {
+    return { valido: false, mensaje: 'La ciudad solo puede contener letras y espacios' };
+  }
+  if (email && !validarEmail(email)) {
+    return { valido: false, mensaje: 'El email no tiene un formato válido' };
+  }
+  return { valido: true };
+};
+
+const validarCamposRegistro = ({ nombre_completo, telefono, fecha_nacimiento, documento, ciudad, direccion, email, contrasena }) => {
+  if (!nombre_completo || !telefono || !fecha_nacimiento || !documento || !ciudad || !direccion || !email || !contrasena) {
+    return { valido: false, mensaje: 'Todos los campos son requeridos' };
+  }
+  if (!validarTelefono(telefono)) {
+    return { valido: false, mensaje: 'El teléfono debe empezar por 3 y tener 10 dígitos' };
+  }
+  if (!validarCiudad(ciudad)) {
+    return { valido: false, mensaje: 'La ciudad solo puede contener letras y espacios' };
+  }
+  if (!validarEmail(email)) {
+    return { valido: false, mensaje: 'El email no tiene un formato válido' };
+  }
+  const docValidacion = validarDocumento(documento);
+  if (!docValidacion.valido) {
+    return { valido: false, mensaje: docValidacion.msg };
+  }
+  if (contrasena.length < 8) {
+    return { valido: false, mensaje: 'La contraseña debe tener al menos 8 caracteres' };
+  }
+  return { valido: true };
+};
+
+const verificarEmailDuplicado = async ({ email, idExcluir = null, transaction }) => {
+  const emailLimpio = email.trim().toLowerCase();
+  const where = { email: emailLimpio };
+  if (idExcluir !== null) where.id_usuario = { [Op.ne]: idExcluir };
+
+  const existente = await Usuario.findOne({ where, transaction });
+  return existente ? { duplicado: true, emailLimpio } : { duplicado: false, emailLimpio };
+};
+
+const verificarDocumentoDuplicado = async ({ documento, idExcluir = null, transaction }) => {
+  const where = { documento };
+  if (idExcluir !== null) where.id_usuario = { [Op.ne]: idExcluir };
+
+  const existente = await Usuario.findOne({ where, transaction });
+  return !!existente;
+};
+
+const INCLUDE_REPARTIDOR = [
+  {
+    model: Role,
+    as: 'roles',
+    where: { nombre: 'REPARTIDOR' },
+    through: { attributes: [] }
+  },
+  {
+    model: Vehiculo,
+    as: 'vehiculo',
+    attributes: { exclude: ['id_usuario'] }
+  }
+];
+
+const INCLUDE_PERFIL = [
+  {
+    model: Role,
+    as: 'roles',
+    through: { attributes: [] },
+    attributes: ['nombre']
+  },
+  {
+    model: Vehiculo,
+    as: 'vehiculo',
+    attributes: { exclude: ['id_usuario'] }
+  }
+];
+
 // Registrar cliente
 export const registrarCliente = async (req, res) => {
     const transaction = await sequelize.transaction();
@@ -118,80 +208,25 @@ export const registrarCliente = async (req, res) => {
         } = req.body;
 
         // Validaciones
-        if (!nombre_completo || !telefono || !fecha_nacimiento || !documento || !ciudad || !direccion || !email || !contrasena) {
-            await transaction.rollback();
-            return res.status(400).json({ 
-                success: false, 
-                message: "Todos los campos son requeridos" 
-            });
-        }
-
-        if (!validarTelefono(telefono)) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: "El teléfono debe empezar por 3 y tener 10 dígitos"
-            });
-        }
-
-        if (!validarCiudad(ciudad)) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: "La ciudad solo puede contener letras y espacios"
-            });
-        }
-
-        if (!validarEmail(email)) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: "El email no tiene un formato válido"
-            });
-        }
-
-        const docValidacion = validarDocumento(documento);
-if (!docValidacion.valido) {
-  await transaction.rollback();
-  return res.status(400).json({ success: false, message: docValidacion.msg });
-}
-
-        if (contrasena.length < 8) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: "La contraseña debe tener al menos 8 caracteres"
-            });
-        }
-
-        // Verificar si el email ya existe
-        const emailLimpio = email.trim().toLowerCase();
-
-const emailExistente = await Usuario.findOne({
-    where: { email: emailLimpio },
-    transaction
-});
-        if (emailExistente) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: "El email ya está registrado"
-            });
-        }
-
-        // Verificar si el documento ya existe
-        const documentoExistente = await Usuario.findOne({
-            where: { documento },
-            transaction
+        const validacion = validarCamposRegistro({
+            nombre_completo, telefono, fecha_nacimiento,
+            documento, ciudad, direccion, email, contrasena
         });
-        if (documentoExistente) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: "El documento ya está registrado"
-            });
+        if (!validacion.valido) {
+            return rollbackError(transaction, res, 400, validacion.mensaje);
         }
 
+        const { duplicado: emailDuplicado, emailLimpio } = await verificarEmailDuplicado({
+            email, transaction
+        });
+        if (emailDuplicado) {
+            return rollbackError(transaction, res, 400, 'El email ya está registrado');
+        }
+
+        const docDuplicado = await verificarDocumentoDuplicado({ documento, transaction });
+        if (docDuplicado) {
+            return rollbackError(transaction, res, 400, 'El documento ya está registrado');
+        }
 
         // Crear usuario
         const usuario = await Usuario.create({
@@ -262,95 +297,36 @@ export const registrarRepartidor = async (req, res) => {
         } = req.body;
 
         // Validaciones
-        if (!nombre_completo || !telefono || !fecha_nacimiento || !documento || !ciudad || !direccion || !email || !contrasena || !vehiculo) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: 'Todos los campos incluyendo el vehículo son requeridos'
-            });
+         const validacion = validarCamposRegistro({
+            nombre_completo, telefono, fecha_nacimiento,
+            documento, ciudad, direccion, email, contrasena
+        });
+        if (!validacion.valido) {
+            return rollbackError(transaction, res, 400, validacion.mensaje);
+        }
+
+        if (!vehiculo) {
+            return rollbackError(transaction, res, 400, 'Todos los campos incluyendo el vehículo son requeridos');
         }
 
         if (!vehiculo.tipo || !vehiculo.modelo || !vehiculo.placa || !vehiculo.color) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: 'Los datos del vehículo (tipo, modelo, placa, color) son requeridos'
-            });
-        }
-
-        if (!validarTelefono(telefono)) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: 'El teléfono debe empezar por 3 y tener 10 dígitos'
-            });
-        }
-
-        if (!validarCiudad(ciudad)) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: 'La ciudad solo puede contener letras y espacios'
-            });
-        }
-
-        if (!validarEmail(email)) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: 'El email no tiene un formato válido'
-            });
-        }
-
-        const docValidacion = validarDocumento(documento);
-if (!docValidacion.valido) {
-  await transaction.rollback();
-  return res.status(400).json({ success: false, message: docValidacion.msg });
-}
-
-        if (contrasena.length < 8) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: 'La contraseña debe tener al menos 8 caracteres'
-            });
+            return rollbackError(transaction, res, 400, 'Los datos del vehículo (tipo, modelo, placa, color) son requeridos');
         }
 
         if (!validarCiudad(vehiculo.color)) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: 'El color del vehículo solo puede contener letras y espacios'
-            });
+            return rollbackError(transaction, res, 400, 'El color del vehículo solo puede contener letras y espacios');
         }
 
-        // Verificar si el email ya existe
-        const emailLimpio = email.trim().toLowerCase();
-
-const emailExistente = await Usuario.findOne({
-    where: { email: emailLimpio },
-    transaction
-});
-        if (emailExistente) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: 'El email ya esta registrado'
-            });
-        }
-
-        // Verificar si el documento ya existe
-        const documentoExistente = await Usuario.findOne({
-            where: { documento },
-            transaction
+        const { duplicado: emailDuplicado, emailLimpio } = await verificarEmailDuplicado({
+            email, transaction
         });
+        if (emailDuplicado) {
+            return rollbackError(transaction, res, 400, 'El email ya esta registrado');
+        }
 
-        if (documentoExistente) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: 'El documento ya esta registrado'
-            });
+        const docDuplicado = await verificarDocumentoDuplicado({ documento, transaction });
+        if (docDuplicado) {
+            return rollbackError(transaction, res, 400, 'El documento ya esta registrado');
         }
 
         const placaExistente = await Vehiculo.findOne({
@@ -358,11 +334,7 @@ const emailExistente = await Usuario.findOne({
             transaction
         });
         if (placaExistente) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: 'La placa ya está registrada'
-            });
+            return rollbackError(transaction, res, 400, 'La placa ya está registrada');
         }
 
         // Crear usuario
@@ -385,11 +357,7 @@ const emailExistente = await Usuario.findOne({
         });
 
         if (!rolRepartidor) {
-            await transaction.rollback();
-            return res.status(500).json({
-                success: false,
-                message: 'Error: Rol REPARTIDOR no encontrado en la base de datos'
-            });
+            return rollbackError(transaction, res, 500, 'Error: Rol REPARTIDOR no encontrado en la base de datos');
         }
         await RolUsuario.create({
             id_usuario: usuario.id_usuario,
@@ -432,19 +400,7 @@ const emailExistente = await Usuario.findOne({
 export const listarRepartidores = async (req, res) => {
     try {
         const repartidores = await Usuario.findAll({
-            include: [
-                {
-                    model: Role,
-                    as: 'roles',
-                    where: { nombre: 'REPARTIDOR' },
-                    through: { attributes: [] }
-                },
-                {
-                    model: Vehiculo,
-                    as: 'vehiculo',
-                    attributes: { exclude: ['id_usuario'] }
-                }
-            ],
+            include: INCLUDE_REPARTIDOR,  
             attributes: { exclude: ['contrasena'] },
             order: [['nombre_completo', 'ASC']]
         });
@@ -466,26 +422,11 @@ export const obtenerRepartidor = async (req, res) => {
 
         const usuario = await Usuario.findByPk(id, {
             attributes: { exclude: ['contrasena'] },
-            include: [
-                {
-                    model: Role,
-                    as: 'roles',
-                    where: { nombre: 'REPARTIDOR' },
-                    through: { attributes: [] }
-                },
-                {
-                    model: Vehiculo,
-                    as: 'vehiculo',
-                    attributes: { exclude: ['id_usuario'] }
-                }
-            ]
+            include: INCLUDE_REPARTIDOR
         });
 
         if (!usuario) {
-            return res.status(404).json({
-                success: false,
-                message: 'Repartidor no encontrado'
-            });
+            return errorSimple(res, 404, 'Repartidor no encontrado');
         }
 
         const pedidosEntregados = await Distribucion.count({
@@ -538,91 +479,44 @@ export const actualizarRepartidor = async (req, res) => {
         });
 
         if (!usuario) {
-            await transaction.rollback();
-            return res.status(404).json({
-                success: false,
-                message: 'Repartidor no encontrado'
-            });
+            return rollbackError(transaction, res, 404, 'Repartidor no encontrado');
         }
 
-// Validar teléfono si viene
-        if (telefono && !validarTelefono(telefono)) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: 'El teléfono debe empezar por 3 y tener 10 dígitos'
-            });
-        }
-
-        // Validar ciudad si viene
-        if (ciudad && !validarCiudad(ciudad)) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: 'La ciudad solo puede contener letras y espacios'
-            });
-        }
-
-        // Validar email si viene
-        if (email && !validarEmail(email)) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: 'El email no tiene un formato válido'
-            });
+        const validacion = validarCamposOpcionales({ telefono, ciudad, email });
+        if (!validacion.valido) {
+            return rollbackError(transaction, res, 400, validacion.mensaje);
         }
 
         // Validar estado si viene
         if (estado && !['ACTIVO', 'INACTIVO', 'SUSPENDIDO'].includes(estado)) {
-            await transaction.rollback();
-            return res.status(400).json({
-                success: false,
-                message: 'Estado inválido. Debe ser: ACTIVO, INACTIVO o SUSPENDIDO'
-            });
+            return rollbackError(transaction, res, 400, 'Estado inválido. Debe ser: ACTIVO, INACTIVO o SUSPENDIDO');
         }
 
 
  // Verificar documento duplicado
         if (documento) {
-  // 1. Validar formato primero
-  const docValidacion = validarDocumento(documento);
-  if (!docValidacion.valido) {
-    await transaction.rollback();
-    return res.status(400).json({ success: false, message: docValidacion.msg });
-  }
-  // 2. Luego verificar duplicado
-  if (documento !== usuario.documento) {
-    const documentoExistente = await Usuario.findOne({
-      where: { documento, id_usuario: { [Op.ne]: id } },
-      transaction
-    });
-    if (documentoExistente) {
-      await transaction.rollback();
-      return res.status(400).json({
-        success: false,
-        message: 'El documento ya está registrado por otro usuario'
-      });
-    }
-  }
-}
+            const docValidacion = validarDocumento(documento);
+            if (!docValidacion.valido) {
+                return rollbackError(transaction, res, 400, docValidacion.msg);
+            }
+            if (documento !== usuario.documento) {
+                const docDuplicado = await verificarDocumentoDuplicado({
+                    documento, idExcluir: id, transaction
+                });
+                if (docDuplicado) {
+                    return rollbackError(transaction, res, 400, 'El documento ya está registrado por otro usuario');
+                }
+            }
+        }
 
          // Verificar email duplicado
-        const emailLimpio = email ? email.trim().toLowerCase() : email;
-
-if (emailLimpio && emailLimpio !== usuario.email) {
-    const emailExistente = await Usuario.findOne({
-        where: {
-            email: emailLimpio,
-            id_usuario: { [Op.ne]: id }
-        },
-        transaction
-    });
-            if (emailExistente) {
-                await transaction.rollback();
-                return res.status(400).json({
-                    success: false,
-                    message: 'El email ya está registrado por otro usuario'
-                });
+        let emailLimpio = email ? email.trim().toLowerCase() : email;
+        if (emailLimpio && emailLimpio !== usuario.email) {
+            const { duplicado } = await verificarEmailDuplicado({
+                email, idExcluir: id, transaction
+            });
+            if (duplicado) {
+                return rollbackError(transaction, res, 400, 'El email ya está registrado por otro usuario');
             }
         }
 
@@ -641,11 +535,7 @@ if (emailLimpio && emailLimpio !== usuario.email) {
         // Actualizar vehiculo si se proporciona
         if (vehiculo) {
             if (vehiculo.color && !validarCiudad(vehiculo.color)) {
-                await transaction.rollback();
-                return res.status(400).json({
-                    success: false,
-                    message: 'El color del vehículo solo puede contener letras y espacios'
-                });
+                return rollbackError(transaction, res, 400, 'El color del vehículo solo puede contener letras y espacios');
             }
 
             let vehiculoExistente = await Vehiculo.findOne({
@@ -662,11 +552,7 @@ if (emailLimpio && emailLimpio !== usuario.email) {
                     transaction
                 });
                 if (placaExistente) {
-                    await transaction.rollback();
-                    return res.status(400).json({
-                        success: false,
-                        message: 'La placa ya está registrada por otro usuario'
-                    });
+                    return rollbackError(transaction, res, 400, 'La placa ya está registrada por otro usuario');
                 }
             }
 
@@ -693,18 +579,7 @@ if (emailLimpio && emailLimpio !== usuario.email) {
         // Obtener repartidor actualizado
         const repartidorActualizado = await Usuario.findByPk(id, {
             attributes: { exclude: ['contrasena'] },
-            include: [
-                {
-                    model: Role,
-                    as: 'roles',
-                    through: { attributes: [] }
-                },
-                {
-                    model: Vehiculo,
-                    as: 'vehiculo',
-                    attributes: { exclude: ['id_usuario'] }
-                }
-            ]
+            include: INCLUDE_PERFIL
         });
 
         res.json({
@@ -735,11 +610,7 @@ export const eliminarRepartidor = async (req, res) => {
         });
 
         if (!usuario) {
-            await transaction.rollback();
-            return res.status(404).json({
-                success: false,
-                message: 'Repartidor no encontrado'
-            });
+            return rollbackError(transaction, res, 404, 'Repartidor no encontrado');
         }
 
         // Eliminar vehiculo asociado
@@ -777,10 +648,7 @@ export const cambiarEstadoRepartidor = async (req, res) => {
         const { estado } = req.body;
 
         if (!estado || !['ACTIVO', 'INACTIVO', 'SUSPENDIDO'].includes(estado)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Estado invalido. Debe ser: ACTIVO, INACTIVO o SUSPENDIDO'
-            });
+            return errorSimple(res, 400, 'Estado invalido. Debe ser: ACTIVO, INACTIVO o SUSPENDIDO');
         }
 
         const usuario = await Usuario.findByPk(id, {
@@ -792,10 +660,7 @@ export const cambiarEstadoRepartidor = async (req, res) => {
         });
 
         if (!usuario) {
-            return res.status(404).json({
-                success: false,
-                message: 'Repartidor no encontrado'
-            });
+            return errorSimple(res, 404, 'Repartidor no encontrado');
         }
 
         await usuario.update({ estado });
@@ -867,30 +732,13 @@ export const obtenerPerfil = async (req, res) => {
     try {
         const usuarioId = req.user.id;
 
-        console.log(`Obteniendo perfil del usuario ${usuarioId}`);
-
         const usuario = await Usuario.findByPk(usuarioId, {
             attributes: { exclude: ['contrasena'] },
-            include: [
-                {
-                    model: Role,
-                    as: 'roles',
-                    through: { attributes: [] },
-                    attributes: ['nombre']
-                },
-                {
-                    model: Vehiculo,
-                    as: 'vehiculo',
-                    attributes: { exclude: ['id_usuario'] }
-                }
-            ]
+            include: INCLUDE_PERFIL 
         });
 
         if (!usuario) {
-            return res.status(404).json({
-                success: false,
-                message: 'Usuario no encontrado'
-            });
+            return errorSimple(res, 404, 'Usuario no encontrado');
         }
 
         res.json({
@@ -921,8 +769,6 @@ export const actualizarPerfil = async (req, res) => {
         const usuarioId = req.user.id;
         const { nombre_completo, telefono, direccion, ciudad, email, fecha_nacimiento, documento } = req.body;
 
-        console.log(` Actualizando perfil del usuario ${usuarioId}`);
-
         const usuario = await Usuario.findByPk(usuarioId, {
             include: [{
                 model: Role,
@@ -933,80 +779,47 @@ export const actualizarPerfil = async (req, res) => {
         });
 
         if (!usuario) {
-            return res.status(404).json({
-                success: false,
-                message: 'Usuario no encontrado'
-            });
+            return errorSimple(res, 404, 'Usuario no encontrado');
         }
 
         const roles = usuario.roles?.map(r => r.nombre) || [];
 
         // REPARTIDOR NO PUEDE EDITAR SU PERFIL
         if (roles.includes('REPARTIDOR')) {
-            return res.status(403).json({
-                success: false,
-                message: 'Los repartidores no pueden editar su perfil. Contacta al administrador.'
-            });
+            return errorSimple(res, 403, 'Los repartidores no pueden editar su perfil. Contacta al administrador.');
         }
 
-        if (telefono && !validarTelefono(telefono)) {
-            return res.status(400).json({
-                success: false,
-                message: 'El teléfono debe empezar por 3 y tener 10 dígitos'
-            });
-        }
-
-        if (ciudad && !validarCiudad(ciudad)) {
-            return res.status(400).json({
-                success: false,
-                message: 'La ciudad solo puede contener letras y espacios'
-            });
-        }
-
-        if (email && !validarEmail(email)) {
-            return res.status(400).json({
-                success: false,
-                message: 'El email no tiene un formato válido'
-            });
+        const validacion = validarCamposOpcionales({ telefono, ciudad, email });
+        if (!validacion.valido) {
+            return errorSimple(res, 400, validacion.mensaje);
         }
 
         // Verificar si el email ya existe en otro usuario
         const emailLimpio = email ? email.trim().toLowerCase() : email;
-
-if (emailLimpio && emailLimpio !== usuario.email) {
-    const emailExistente = await Usuario.findOne({
-        where: {
-            email: emailLimpio,
-            id_usuario: { [Op.ne]: usuarioId }
-        }
-    });
-            if (emailExistente) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'El email ya está registrado por otro usuario'
-                });
+        if (emailLimpio && emailLimpio !== usuario.email) {
+            const { duplicado } = await verificarEmailDuplicado({
+                email, idExcluir: usuarioId
+            });
+            if (duplicado) {
+                return errorSimple(res, 400, 'El email ya está registrado por otro usuario');
             }
         }
+
         // Verificar si el documento ya existe en otro usuario
-if (documento) {
-  // 1. Validar formato primero
-  const docValidacion = validarDocumento(documento);
-  if (!docValidacion.valido) {
-    return res.status(400).json({ success: false, message: docValidacion.msg });
-  }
-  // 2. Luego verificar duplicado
-  if (documento !== usuario.documento) {
-    const documentoExistente = await Usuario.findOne({
-      where: { documento, id_usuario: { [Op.ne]: usuarioId } }
-    });
-    if (documentoExistente) {
-      return res.status(400).json({
-        success: false,
-        message: 'El documento ya está registrado por otro usuario'
-      });
-    }
-  }
-}
+        if (documento) {
+            const docValidacion = validarDocumento(documento);
+            if (!docValidacion.valido) {
+                return errorSimple(res, 400, docValidacion.msg);
+            }
+            if (documento !== usuario.documento) {
+                const docDuplicado = await verificarDocumentoDuplicado({
+                    documento, idExcluir: usuarioId
+                });
+                if (docDuplicado) {
+                    return errorSimple(res, 400, 'El documento ya está registrado por otro usuario');
+                }
+            }
+        }
 
         // Actualizar solo los campos permitidos
         await usuario.update({
