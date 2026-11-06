@@ -32,151 +32,34 @@ const ChatBot = {
       .trim();
   },
 
+  // ========== TABLA DE INTENCIONES ==========
+  // El orden importa: gana la primera coincidencia.
+  // "garantia" va después de "devolucion" para evitar solapamiento.
+  intenciones: [
+    { id: 'saludo',        claves: ['hola', 'buenas', 'saludo', 'que tal', 'hey', 'hi'] },
+    { id: 'ayuda',         claves: ['ayuda', 'opciones', 'que puedes hacer', 'menu', 'comandos'] },
+    { id: 'despedida',     claves: ['gracias', 'adios', 'chao', 'bye', 'hasta luego'] },
+    { id: 'productos',     claves: ['producto', 'gafa', 'lente', 'catalogo', 'montura', 'tienen', 'venden'] },
+    { id: 'horario',       claves: ['horario', 'abren', 'cierran', 'atencion', 'atienden'] },
+    { id: 'envio',         claves: ['envio', 'domicilio', 'entrega', 'demora', 'llega'] },
+    { id: 'formulamedica', claves: ['formula', 'receta', 'subir', 'adjuntar', 'medica'] },
+    { id: 'pago',          claves: ['pago', 'tarjeta', 'bold', 'pagar', 'metodo', 'transferencia', 'nequi', 'daviplata'] },
+    { id: 'devolucion',    claves: ['devolucion', 'cambio', 'reclamo', 'devolver'] },
+    { id: 'garantia',      claves: ['garantia', 'proteccion', 'defecto', 'falla'] },
+    { id: 'precios',       claves: ['precio', 'costo', 'cuanto cuesta', 'cuanto vale', 'valor'] },
+    { id: 'contacto',      claves: ['contacto', 'contactar', 'hablar', 'comunicarse', 'soporte', 'whatsapp', 'telefono'] },
+  ],
+
   // ========== DETECTAR INTENCIÓN ==========
   detectarIntencion: (mensaje) => {
     const msg = ChatBot.normalizar(mensaje);
-
     if (!msg) return 'default';
 
-    // SALUDO
-    if (
-      msg.includes('hola') ||
-      msg.includes('buenas') ||
-      msg.includes('saludo') ||
-      msg.includes('que tal') ||
-      msg.includes('hey') ||
-      msg.includes('hi')
-    ) {
-      return 'saludo';
-    }
+    const match = ChatBot.intenciones.find(({ claves }) =>
+      claves.some((clave) => msg.includes(clave))
+    );
 
-    // AYUDA
-    if (
-      msg.includes('ayuda') ||
-      msg.includes('opciones') ||
-      msg.includes('que puedes hacer') ||
-      msg.includes('menu') ||
-      msg.includes('comandos')
-    ) {
-      return 'ayuda';
-    }
-
-    // DESPEDIDA
-    if (
-      msg.includes('gracias') ||
-      msg.includes('adios') ||
-      msg.includes('chao') ||
-      msg.includes('bye') ||
-      msg.includes('hasta luego')
-    ) {
-      return 'despedida';
-    }
-
-    // PRODUCTOS
-    if (
-      msg.includes('producto') ||
-      msg.includes('gafa') ||
-      msg.includes('lente') ||
-      msg.includes('catalogo') ||
-      msg.includes('montura') ||
-      msg.includes('tienen') ||
-      msg.includes('venden')
-    ) {
-      return 'productos';
-    }
-
-    // HORARIO
-    if (
-      msg.includes('horario') ||
-      msg.includes('abren') ||
-      msg.includes('cierran') ||
-      msg.includes('atencion') ||
-      msg.includes('atienden')
-    ) {
-      return 'horario';
-    }
-
-    // ENVÍO
-    if (
-      msg.includes('envio') ||
-      msg.includes('domicilio') ||
-      msg.includes('entrega') ||
-      msg.includes('demora') ||
-      msg.includes('llega')
-    ) {
-      return 'envio';
-    }
-
-    // FÓRMULA MÉDICA
-    if (
-      msg.includes('formula') ||
-      msg.includes('receta') ||
-      msg.includes('subir') ||
-      msg.includes('adjuntar') ||
-      msg.includes('medica')
-    ) {
-      return 'formulamedica';
-    }
-
-    // PAGO
-    if (
-      msg.includes('pago') ||
-      msg.includes('tarjeta') ||
-      msg.includes('bold') ||
-      msg.includes('pagar') ||
-      msg.includes('metodo') ||
-      msg.includes('transferencia') ||
-      msg.includes('nequi') ||
-      msg.includes('daviplata')
-    ) {
-      return 'pago';
-    }
-
-    // DEVOLUCIÓN
-    if (
-      msg.includes('devolucion') ||
-      msg.includes('cambio') ||
-      msg.includes('reclamo') ||
-      msg.includes('devolver')
-    ) {
-      return 'devolucion';
-    }
-
-    // GARANTÍA (va después de devolución para evitar solapamiento)
-    if (
-      msg.includes('garantia') ||
-      msg.includes('proteccion') ||
-      msg.includes('defecto') ||
-      msg.includes('falla')
-    ) {
-      return 'garantia';
-    }
-
-    // PRECIOS
-    if (
-      msg.includes('precio') ||
-      msg.includes('costo') ||
-      msg.includes('cuanto cuesta') ||
-      msg.includes('cuanto vale') ||
-      msg.includes('valor')
-    ) {
-      return 'precios';
-    }
-
-    // CONTACTO
-    if (
-      msg.includes('contacto') ||
-      msg.includes('contactar') ||
-      msg.includes('hablar') ||
-      msg.includes('comunicarse') ||
-      msg.includes('soporte') ||
-      msg.includes('whatsapp') ||
-      msg.includes('telefono')
-    ) {
-      return 'contacto';
-    }
-
-    return 'default';
+    return match ? match.id : 'default';
   },
 
   // ========== OBTENER RESPUESTA ==========
