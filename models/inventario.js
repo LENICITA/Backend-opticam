@@ -1,6 +1,43 @@
 import { DataTypes, Op } from 'sequelize';
 import sequelize from '../config/database.js';
 
+// ========== HELPERS (eliminan duplicación) ==========
+
+/**
+ * Formatea un producto de Sequelize a objeto plano.
+ * Centraliza el mapeo que antes se repetía 7 veces.
+ */
+const formatearProducto = (p) => ({
+  id_producto: p.id_producto,
+  id_categoria: p.id_categoria,
+  nombre: p.nombre,
+  descripcion: p.descripcion,
+  marca: p.marca,
+  precio: p.precio,
+  imagen: p.imagen,
+  material: p.material,
+  color: p.color,
+  tipo_categoria: p.categoria?.tipo_categoria,
+  categoria_descripcion: p.categoria?.descripcion
+});
+
+/**
+ * Formatea un producto sin el campo categoria_descripcion
+ * (variante usada por getDestacados, filtrar, buscar, getByCategoria, getByMarca).
+ */
+const formatearProductoSimple = (p) => ({
+  id_producto: p.id_producto,
+  id_categoria: p.id_categoria,
+  nombre: p.nombre,
+  descripcion: p.descripcion,
+  marca: p.marca,
+  precio: p.precio,
+  imagen: p.imagen,
+  material: p.material,
+  color: p.color,
+  tipo_categoria: p.categoria?.tipo_categoria
+});
+
 // ========== MODELO PRODUCTOS ==========
 const Producto = sequelize.define('Producto', {
   id_producto: {
@@ -118,6 +155,8 @@ const Categoria = sequelize.define('Categoria', {
   timestamps: false
 });
 
+const INCLUDE_CATEGORIA = [{ model: Categoria, as: 'categoria' }];
+
 // ========== RELACIONES ==========
 Producto.belongsTo(Categoria, {
   foreignKey: 'id_categoria',
@@ -133,357 +172,170 @@ Categoria.hasMany(Producto, {
 const Inventario = {
   // ========== PRODUCTOS ==========
 
-  // Obtener todos los productos con JOIN a categorías
   getAll: async () => {
-    try {
-      const productos = await Producto.findAll({
-        include: [{
-          model: Categoria,
-          as: 'categoria'
-        }],
-        order: [['id_producto', 'DESC']]
-      });
-
-      // Formatear para mantener la misma estructura que antes
-      return productos.map(p => ({
-        id_producto: p.id_producto,
-        id_categoria: p.id_categoria,
-        nombre: p.nombre,
-        descripcion: p.descripcion,
-        marca: p.marca,
-        precio: p.precio,
-        imagen: p.imagen,
-        material: p.material,
-        color: p.color,
-        tipo_categoria: p.categoria?.tipo_categoria,
-        categoria_descripcion: p.categoria?.descripcion
-      }));
-    } catch (error) {
-      throw error;
-    }
+    const productos = await Producto.findAll({
+      include: INCLUDE_CATEGORIA,
+      order: [['id_producto', 'DESC']]
+    });
+    return productos.map(formatearProducto);
   },
 
-  // Obtener productos destacados (últimos 6)
   getDestacados: async () => {
-    try {
-      const productos = await Producto.findAll({
-        include: [{
-          model: Categoria,
-          as: 'categoria'
-        }],
-        order: [['id_producto', 'DESC']],
-        limit: 6
-      });
-
-      return productos.map(p => ({
-        id_producto: p.id_producto,
-        id_categoria: p.id_categoria,
-        nombre: p.nombre,
-        descripcion: p.descripcion,
-        marca: p.marca,
-        precio: p.precio,
-        imagen: p.imagen,
-        material: p.material,
-        color: p.color,
-        tipo_categoria: p.categoria?.tipo_categoria
-      }));
-    } catch (error) {
-      throw error;
-    }
+    const productos = await Producto.findAll({
+      include: INCLUDE_CATEGORIA,
+      order: [['id_producto', 'DESC']],
+      limit: 6
+    });
+    return productos.map(formatearProductoSimple);
   },
 
-  // Obtener producto por ID
   findById: async (id) => {
-    try {
-      const producto = await Producto.findByPk(id, {
-        include: [{
-          model: Categoria,
-          as: 'categoria'
-        }]
-      });
-
-      if (!producto) return null;
-
-      return {
-        id_producto: producto.id_producto,
-        id_categoria: producto.id_categoria,
-        nombre: producto.nombre,
-        descripcion: producto.descripcion,
-        marca: producto.marca,
-        precio: producto.precio,
-        imagen: producto.imagen,
-        material: producto.material,
-        color: producto.color,
-        tipo_categoria: producto.categoria?.tipo_categoria,
-        categoria_descripcion: producto.categoria?.descripcion
-      };
-    } catch (error) {
-      throw error;
-    }
+    const producto = await Producto.findByPk(id, {
+      include: INCLUDE_CATEGORIA
+    });
+    if (!producto) return null;
+    return formatearProducto(producto);
   },
 
-  // Filtrar productos por precio, marca, color, material
   filtrar: async (filtros) => {
-    try {
-      const where = {};
+    const where = {};
 
-      if (filtros.precio_min !== undefined && filtros.precio_min !== null) {
-      where.precio = { 
-        [Op.gte]: sequelize.literal(Number(filtros.precio_min)) 
-      };
+    // Precio min/max (sin duplicar la asignación)
+    const precioRange = {};
+    if (filtros.precio_min !== undefined && filtros.precio_min !== null) {
+      precioRange[Op.gte] = Number(filtros.precio_min);
     }
     if (filtros.precio_max !== undefined && filtros.precio_max !== null) {
-      where.precio = { 
-        ...where.precio, 
-        [Op.lte]: sequelize.literal(Number(filtros.precio_max)) 
-      };
+      precioRange[Op.lte] = Number(filtros.precio_max);
     }
-      if (filtros.marca) {
-        where.marca = filtros.marca;
-      }
-      if (filtros.color) {
-        where.color = filtros.color;
-      }
-      if (filtros.material) {
-        where.material = filtros.material;
-      }
-      if (filtros.id_categoria) {
-        where.id_categoria = parseInt(filtros.id_categoria);
-      }
-      if (filtros.busqueda) {
-        where[Op.or] = [
-          { nombre: { [Op.like]: `%${filtros.busqueda}%` } },
-          { marca: { [Op.like]: `%${filtros.busqueda}%` } },
-          { descripcion: { [Op.like]: `%${filtros.busqueda}%` } }
-        ];
-      }
-
-      const productos = await Producto.findAll({
-        where,
-        include: [{
-          model: Categoria,
-          as: 'categoria'
-        }],
-        order: [['id_producto', 'DESC']]
-      });
-
-      return productos.map(p => ({
-        id_producto: p.id_producto,
-        id_categoria: p.id_categoria,
-        nombre: p.nombre,
-        descripcion: p.descripcion,
-        marca: p.marca,
-        precio: p.precio,
-        imagen: p.imagen,
-        material: p.material,
-        color: p.color,
-        tipo_categoria: p.categoria?.tipo_categoria
-      }));
-    } catch (error) {
-      throw error;
+    if (Object.keys(precioRange).length > 0) {
+      where.precio = precioRange;
     }
+
+    if (filtros.marca)        where.marca = filtros.marca;
+    if (filtros.color)        where.color = filtros.color;
+    if (filtros.material)     where.material = filtros.material;
+    if (filtros.id_categoria) where.id_categoria = parseInt(filtros.id_categoria);
+
+    if (filtros.busqueda) {
+      where[Op.or] = [
+        { nombre:      { [Op.like]: `%${filtros.busqueda}%` } },
+        { marca:       { [Op.like]: `%${filtros.busqueda}%` } },
+        { descripcion: { [Op.like]: `%${filtros.busqueda}%` } }
+      ];
+    }
+
+    const productos = await Producto.findAll({
+      where,
+      include: INCLUDE_CATEGORIA,
+      order: [['id_producto', 'DESC']]
+    });
+    return productos.map(formatearProductoSimple);
   },
 
-  // Buscar productos por nombre o marca (búsqueda rápida)
   buscar: async (termino) => {
-    try {
-      const search = `%${termino}%`;
-      const productos = await Producto.findAll({
-        where: {
-          [Op.or]: [
-            { nombre: { [Op.like]: search } },
-            { marca: { [Op.like]: search } },
-            { descripcion: { [Op.like]: search } }
-          ]
-        },
-        include: [{
-          model: Categoria,
-          as: 'categoria'
-        }],
-        order: [['id_producto', 'DESC']]
-      });
-
-      return productos.map(p => ({
-        id_producto: p.id_producto,
-        id_categoria: p.id_categoria,
-        nombre: p.nombre,
-        descripcion: p.descripcion,
-        marca: p.marca,
-        precio: p.precio,
-        imagen: p.imagen,
-        material: p.material,
-        color: p.color,
-        tipo_categoria: p.categoria?.tipo_categoria
-      }));
-    } catch (error) {
-      throw error;
-    }
+    const search = `%${termino}%`;
+    const productos = await Producto.findAll({
+      where: {
+        [Op.or]: [
+          { nombre:      { [Op.like]: search } },
+          { marca:       { [Op.like]: search } },
+          { descripcion: { [Op.like]: search } }
+        ]
+      },
+      include: INCLUDE_CATEGORIA,
+      order: [['id_producto', 'DESC']]
+    });
+    return productos.map(formatearProductoSimple);
   },
 
-  // Obtener productos por categoría
   getByCategoria: async (id_categoria) => {
-    try {
-      const productos = await Producto.findAll({
-        where: { id_categoria: parseInt(id_categoria) },
-        include: [{
-          model: Categoria,
-          as: 'categoria'
-        }],
-        order: [['id_producto', 'DESC']]
-      });
-
-      return productos.map(p => ({
-        id_producto: p.id_producto,
-        id_categoria: p.id_categoria,
-        nombre: p.nombre,
-        descripcion: p.descripcion,
-        marca: p.marca,
-        precio: p.precio,
-        imagen: p.imagen,
-        material: p.material,
-        color: p.color,
-        tipo_categoria: p.categoria?.tipo_categoria
-      }));
-    } catch (error) {
-      throw error;
-    }
+    const productos = await Producto.findAll({
+      where: { id_categoria: parseInt(id_categoria) },
+      include: INCLUDE_CATEGORIA,
+      order: [['id_producto', 'DESC']]
+    });
+    return productos.map(formatearProductoSimple);
   },
 
-  // Obtener productos por marca
   getByMarca: async (marca) => {
-    try {
-      const productos = await Producto.findAll({
-        where: { marca },
-        include: [{
-          model: Categoria,
-          as: 'categoria'
-        }],
-        order: [['id_producto', 'DESC']]
-      });
-
-      return productos.map(p => ({
-        id_producto: p.id_producto,
-        id_categoria: p.id_categoria,
-        nombre: p.nombre,
-        descripcion: p.descripcion,
-        marca: p.marca,
-        precio: p.precio,
-        imagen: p.imagen,
-        material: p.material,
-        color: p.color,
-        tipo_categoria: p.categoria?.tipo_categoria
-      }));
-    } catch (error) {
-      throw error;
-    }
+    const productos = await Producto.findAll({
+      where: { marca },
+      include: INCLUDE_CATEGORIA,
+      order: [['id_producto', 'DESC']]
+    });
+    return productos.map(formatearProductoSimple);
   },
 
-  // Obtener todas las marcas únicas
   getMarcas: async () => {
-  try {
     const marcas = await sequelize.query(
       `SELECT DISTINCT marca FROM PRODUCTOS WHERE marca IS NOT NULL AND marca != '' ORDER BY marca ASC`,
       { type: sequelize.QueryTypes.SELECT }
     );
     return marcas.map(item => item.marca);
-  } catch (error) {
-    throw error;
-  }
-},
+  },
 
-  // Obtener todos los colores únicos
   getColores: async () => {
-  try {
     const colores = await sequelize.query(
       `SELECT DISTINCT color FROM PRODUCTOS WHERE color IS NOT NULL AND color != '' ORDER BY color ASC`,
       { type: sequelize.QueryTypes.SELECT }
     );
     return colores.map(item => item.color);
-  } catch (error) {
-    throw error;
-  }
-},
+  },
 
-  // Crear producto
   create: async (data) => {
-    try {
-      const { id_categoria, nombre, descripcion, marca, precio, imagen, material, color } = data;
-      
-      const producto = await Producto.create({
-        id_categoria,
-        nombre,
-        descripcion: descripcion || '',
-        marca: marca || '',
-        precio,
-        imagen: imagen || '',
-        material: material || '',
-        color: color || ''
-      });
+    const { id_categoria, nombre, descripcion, marca, precio, imagen, material, color } = data;
 
-      return { insertId: producto.id_producto };
-    } catch (error) {
-      throw error;
-    }
+    const producto = await Producto.create({
+      id_categoria,
+      nombre,
+      descripcion: descripcion || '',
+      marca: marca || '',
+      precio,
+      imagen: imagen || '',
+      material: material || '',
+      color: color || ''
+    });
+
+    return { insertId: producto.id_producto };
   },
 
-  // Actualizar producto
   update: async (id, data) => {
-    try {
-      const { id_categoria, nombre, descripcion, marca, precio, imagen, material, color } = data;
-      
-      const producto = await Producto.findByPk(id);
-      
-      if (!producto) {
-        throw new Error('Producto no encontrado');
-      }
+    const { id_categoria, nombre, descripcion, marca, precio, imagen, material, color } = data;
 
-      await producto.update({
-        id_categoria: id_categoria || producto.id_categoria,
-        nombre: nombre || producto.nombre,
-        descripcion: descripcion !== undefined ? descripcion : producto.descripcion,
-        marca: marca !== undefined ? marca : producto.marca,
-        precio: precio !== undefined ? precio : producto.precio,
-        imagen: imagen !== undefined ? imagen : producto.imagen,
-        material: material !== undefined ? material : producto.material,
-        color: color !== undefined ? color : producto.color
-      });
+    const producto = await Producto.findByPk(id);
+    if (!producto) throw new Error('Producto no encontrado');
 
-      return { affectedRows: 1 };
-    } catch (error) {
-      throw error;
-    }
+    await producto.update({
+      id_categoria: id_categoria || producto.id_categoria,
+      nombre: nombre || producto.nombre,
+      descripcion: descripcion !== undefined ? descripcion : producto.descripcion,
+      marca: marca !== undefined ? marca : producto.marca,
+      precio: precio !== undefined ? precio : producto.precio,
+      imagen: imagen !== undefined ? imagen : producto.imagen,
+      material: material !== undefined ? material : producto.material,
+      color: color !== undefined ? color : producto.color
+    });
+
+    return { affectedRows: 1 };
   },
 
-  // Eliminar producto
   delete: async (id) => {
-    try {
-      const producto = await Producto.findByPk(id);
-      
-      if (!producto) {
-        throw new Error('Producto no encontrado');
-      }
+    const producto = await Producto.findByPk(id);
+    if (!producto) throw new Error('Producto no encontrado');
 
-      await producto.destroy();
-      return { affectedRows: 1 };
-    } catch (error) {
-      throw error;
-    }
+    await producto.destroy();
+    return { affectedRows: 1 };
   },
 
   // ========== CATEGORIAS ==========
 
-  // Obtener todas las categorías
   getCategorias: async () => {
-    try {
-      const categorias = await Categoria.findAll({
-        order: [['tipo_categoria', 'ASC']],
-        attributes: ['tipo_categoria']
-      });
-
-      return categorias.map(c => c.tipo_categoria);
-  } catch (error) {
-    throw error;
-    }
+    const categorias = await Categoria.findAll({
+      order: [['tipo_categoria', 'ASC']],
+      attributes: ['tipo_categoria']
+    });
+    return categorias.map(c => c.tipo_categoria);
   }
 };
 
