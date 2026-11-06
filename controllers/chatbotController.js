@@ -34,6 +34,9 @@ const manejarErrorValidacion = (error, res) => {
   });
 };
 
+const error400 = (res, message) =>
+  res.status(400).json({ success: false, message });
+
 // CONSTANTES
 const MENSAJE_MAX_LENGTH = 300;
 
@@ -44,26 +47,17 @@ export const enviarMensaje = (req, res) => {
 
     // 1. Validar que venga el mensaje
     if (!mensaje) {
-      return res.status(400).json({
-        success: false,
-        message: 'Debes enviar un mensaje'
-      });
+      return error400(res, 'Debes enviar un mensaje');
     }
 
     // 2. Validar que no sea string vacío
     if (typeof mensaje !== 'string' || mensaje.trim() === '') {
-      return res.status(400).json({
-        success: false,
-        message: 'El mensaje no puede estar vacío'
-      });
+      return error400(res, 'El mensaje no puede estar vacío');
     }
 
     // 3. Validar longitud máxima
     if (mensaje.length > MENSAJE_MAX_LENGTH) {
-      return res.status(400).json({
-        success: false,
-        message: `El mensaje no puede superar los ${MENSAJE_MAX_LENGTH} caracteres`
-      });
+      return error400(res, `El mensaje no puede superar los ${MENSAJE_MAX_LENGTH} caracteres`);
     }
 
     // 4. Detectar intención
@@ -87,7 +81,7 @@ export const enviarMensaje = (req, res) => {
 };
 
 // OBTENER BOTONES RÁPIDOS
-export const getBotones = (req, res) => {
+export const getBotones = (_req, res) => {
   try {
     const botones = [
       { id: 1, label: 'Precios', value: 'precios' },
