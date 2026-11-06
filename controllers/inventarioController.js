@@ -61,18 +61,45 @@ const enriquecerProducto = (p) => ({
   imagen_thumbnail: obtenerThumbnail(p.imagen)
 });
 
+const LONGITUD_MIN = 2;
+const LONGITUD_MAX = 45;
+
+const validarLongitud = (texto) => {
+  const len = String(texto).trim().length;
+  return len >= LONGITUD_MIN && len <= LONGITUD_MAX;
+};
+
+const esIdValido = (id) => {
+  const num = Number(id);
+  return !isNaN(num) && num > 0;
+};
+
+const enriquecerProductos = (productos) => productos.map(enriquecerProducto);
+
+const extraerPublicId = (url) => {
+  const urlParts = url.split('/');
+  const publicIdWithExt = urlParts[urlParts.length - 1];
+  return publicIdWithExt.split('.')[0];
+};
+
+const eliminarImagenCloudinary = async (urlImagen) => {
+  if (!urlImagen) return;
+  try {
+    const publicId = extraerPublicId(urlImagen);
+    await cloudinary.uploader.destroy(`opticam/productos/${publicId}`);
+  } catch (error) {
+    console.log('Error al eliminar imagen de Cloudinary:', error);
+  }
+};
+
 // ========== PRODUCTOS ==========
 
 // Obtener todos los productos
-export const getProductos = async (req, res) => {
+export const getProductos = async (_req, res) => {
   try {
     const results = await Inventario.getAll();
 
-    const productosConImagen = results.map(p => ({
-      ...p,
-      imagen_url: obtenerUrlImagen(p.imagen, 400, 400),
-      imagen_thumbnail: obtenerThumbnail(p.imagen)
-    }));
+    const productosConImagen = enriquecerProductos(results);
 
     res.json({
       success: true,
@@ -85,15 +112,11 @@ export const getProductos = async (req, res) => {
 };
 
 // Obtener productos destacados (últimos 6)
-export const getProductosDestacados = async (req, res) => {
+export const getProductosDestacados = async (_req, res) => {
   try {
     const results = await Inventario.getDestacados();
 
-    const productosConImagen = results.map(p => ({
-      ...p,
-      imagen_url: obtenerUrlImagen(p.imagen, 400, 400),
-      imagen_thumbnail: obtenerThumbnail(p.imagen)
-    }));
+    const productosConImagen = enriquecerProductos(results);
 
     res.json({
       success: true,
@@ -110,7 +133,7 @@ export const getProductoById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (!id || isNaN(Number(id)) || Number(id) <= 0) {
+    if (!esIdValido(id)) {
       return res.status(400).json({
         success: false,
         message: 'ID de producto inválido'
@@ -126,11 +149,7 @@ export const getProductoById = async (req, res) => {
       });
     }
 
-    const productoConImagen = {
-      ...result,
-      imagen_url: obtenerUrlImagen(result.imagen, 400, 400),
-      imagen_thumbnail: obtenerThumbnail(result.imagen)
-    };
+    const productoConImagen = enriquecerProducto(result);
 
     res.json({
       success: true,
@@ -167,15 +186,9 @@ export const filtrarProductos = async (req, res) => {
       });
     }
 
-    console.log(' Filtros recibidos (convertidos):', filtros);
-
     const results = await Inventario.filtrar(filtros);
 
-    const productosConImagen = results.map(p => ({
-      ...p,
-      imagen_url: obtenerUrlImagen(p.imagen, 400, 400),
-      imagen_thumbnail: obtenerThumbnail(p.imagen)
-    }));
+    const productosConImagen = enriquecerProductos(results);
 
     res.json({
       success: true,
@@ -202,11 +215,7 @@ export const buscarProductos = async (req, res) => {
 
     const results = await Inventario.buscar(q);
 
-    const productosConImagen = results.map(p => ({
-      ...p,
-      imagen_url: obtenerUrlImagen(p.imagen, 400, 400),
-      imagen_thumbnail: obtenerThumbnail(p.imagen)
-    }));
+    const productosConImagen = enriquecerProductos(results);
 
     res.json({
       success: true,
@@ -233,11 +242,7 @@ export const getProductosByCategoria = async (req, res) => {
 
     const results = await Inventario.getByCategoria(id_categoria);
 
-    const productosConImagen = results.map(p => ({
-      ...p,
-      imagen_url: obtenerUrlImagen(p.imagen, 400, 400),
-      imagen_thumbnail: obtenerThumbnail(p.imagen)
-    }));
+    const productosConImagen = enriquecerProductos(results);
 
     res.json({
       success: true,
@@ -255,7 +260,7 @@ export const getProductosByMarca = async (req, res) => {
   try {
     const { marca } = req.params;
 
-if (!marca || marca.trim() === '') {
+    if (!marca || marca.trim() === '') {
       return res.status(400).json({
         success: false,
         message: 'La marca es requerida'
@@ -264,11 +269,7 @@ if (!marca || marca.trim() === '') {
 
     const results = await Inventario.getByMarca(marca);
 
-    const productosConImagen = results.map(p => ({
-      ...p,
-      imagen_url: obtenerUrlImagen(p.imagen, 400, 400),
-      imagen_thumbnail: obtenerThumbnail(p.imagen)
-    }));
+    const productosConImagen = enriquecerProductos(results);
 
     res.json({
       success: true,
@@ -282,7 +283,7 @@ if (!marca || marca.trim() === '') {
 };
 
 // Obtener todas las marcas
-export const getMarcas = async (req, res) => {
+export const getMarcas = async (_req, res) => {
   try {
     const results = await Inventario.getMarcas();
     res.json({
@@ -296,7 +297,7 @@ export const getMarcas = async (req, res) => {
 };
 
 // Obtener todos los colores
-export const getColores = async (req, res) => {
+export const getColores = async (_req, res) => {
   try {
     const results = await Inventario.getColores();
     res.json({
@@ -335,7 +336,7 @@ export const createProducto = async (req, res) => {
       });
     }
 
-    if (nombre.trim().length < 2 || nombre.trim().length > 45) {
+    if (!validarLongitud(nombre)) {
       return res.status(400).json({
         success: false,
         message: "El nombre debe tener entre 2 y 45 caracteres"
@@ -349,7 +350,7 @@ export const createProducto = async (req, res) => {
       });
     }
 
-    if (descripcion.trim().length < 2 || descripcion.trim().length > 45) {
+    if (!validarLongitud(descripcion)) {
       return res.status(400).json({
         success: false,
         message: "La descripción debe tener entre 2 y 45 caracteres"
@@ -363,7 +364,7 @@ export const createProducto = async (req, res) => {
       });
     }
 
-    if (marca.trim().length < 2 || marca.trim().length > 45) {
+    if (!validarLongitud(marca)) {
       return res.status(400).json({
         success: false,
         message: "La marca debe tener entre 2 y 45 caracteres"
@@ -391,7 +392,7 @@ export const createProducto = async (req, res) => {
       });
     }
 
-    if (material.trim().length < 2 || material.trim().length > 45) {
+    if (!validarLongitud(material)) {
       return res.status(400).json({
         success: false,
         message: "El material debe tener entre 2 y 45 caracteres"
@@ -440,7 +441,7 @@ export const updateProducto = async (req, res) => {
     const { id } = req.params;
     const { id_categoria, nombre, descripcion, marca, precio, material, color } = req.body;
 
-     if (!id || isNaN(Number(id))) {
+    if (!esIdValido(id)) {
       return res.status(400).json({
         success: false,
         message: 'ID de producto inválido'
@@ -463,21 +464,21 @@ export const updateProducto = async (req, res) => {
       });
     }
 
-    if (nombre && (nombre.trim().length < 2 || nombre.trim().length > 45)) {
+    if (nombre && !validarLongitud(nombre)) {
       return res.status(400).json({
         success: false,
         message: "El nombre debe tener entre 2 y 45 caracteres"
       });
     }
 
-    if (descripcion && (descripcion.trim().length < 2 || descripcion.trim().length > 45)) {
+    if (descripcion && !validarLongitud(descripcion)) {
       return res.status(400).json({
         success: false,
         message: "La descripción debe tener entre 2 y 45 caracteres"
       });
     }
 
-    if (marca && (marca.trim().length < 2 || marca.trim().length > 45)) {
+    if (marca && !validarLongitud(marca)) {
       return res.status(400).json({
         success: false,
         message: "La marca debe tener entre 2 y 45 caracteres"
@@ -491,7 +492,7 @@ export const updateProducto = async (req, res) => {
       });
     }
 
-    if (material && (material.trim().length < 2 || material.trim().length > 45)) {
+    if (material && !validarLongitud(material)) {
       return res.status(400).json({
         success: false,
         message: "El material debe tener entre 2 y 45 caracteres"
@@ -512,17 +513,7 @@ export const updateProducto = async (req, res) => {
     if (req.file) {
       imagenFinal = req.file.path;
 
-      // 2. Eliminar imagen anterior de Cloudinary
-      if (productoActual.imagen) {
-        try {
-          const urlParts = productoActual.imagen.split('/');
-          const publicIdWithExt = urlParts[urlParts.length - 1];
-          const publicId = publicIdWithExt.split('.')[0];
-          await cloudinary.uploader.destroy(`opticam/productos/${publicId}`);
-        } catch (error) {
-          console.log('Error al eliminar imagen anterior:', error);
-        }
-      }
+      await eliminarImagenCloudinary(productoActual.imagen);
     }
 
     await Inventario.update(id, {
@@ -537,11 +528,8 @@ export const updateProducto = async (req, res) => {
     });
 
     const updatedProduct = await Inventario.findById(id);
-    const productoConImagen = {
-      ...updatedProduct,
-      imagen_url: obtenerUrlImagen(updatedProduct.imagen, 400, 400),
-      imagen_thumbnail: obtenerThumbnail(updatedProduct.imagen)
-    };
+
+    const productoConImagen = enriquecerProducto(updatedProduct);
 
     res.json({
       success: true,
@@ -558,7 +546,7 @@ export const deleteProducto = async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (!id || isNaN(Number(id))) {
+    if (!esIdValido(id)) {
       return res.status(400).json({
         success: false,
         message: 'ID de producto inválido'
@@ -575,17 +563,7 @@ export const deleteProducto = async (req, res) => {
     }
 
     // ELIMINAR IMAGEN DE CLOUDINARY
-  
-    if (producto.imagen) {
-      try {
-        const urlParts = producto.imagen.split('/');
-        const publicIdWithExt = urlParts[urlParts.length - 1];
-        const publicId = publicIdWithExt.split('.')[0];
-        await cloudinary.uploader.destroy(`opticam/productos/${publicId}`);
-      } catch (error) {
-        console.log('Error al eliminar imagen de Cloudinary:', error);
-      }
-    }
+    await eliminarImagenCloudinary(producto.imagen);
 
     await Inventario.delete(id);
 
@@ -601,7 +579,7 @@ export const deleteProducto = async (req, res) => {
 // ========== CATEGORIAS ==========
 
 // Obtener todas las categorías
-export const getCategorias = async (req, res) => {
+export const getCategorias = async (_req, res) => {
   try {
     const results = await Inventario.getCategorias();
     res.json({
@@ -613,4 +591,3 @@ export const getCategorias = async (req, res) => {
     return manejarErrorValidacion(error, res);
   }
 };
-
