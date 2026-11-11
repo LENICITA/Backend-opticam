@@ -42,9 +42,29 @@ const manejarErrorValidacion = (error, res) => {
   });
 };
 
+const error400 = (res, message) => res.status(400).json({ success: false, message });
+const error401 = (res, message) => res.status(401).json({ success: false, message });
+const error403 = (res, message) => res.status(403).json({ success: false, message });
+const error404 = (res, message) => res.status(404).json({ success: false, message });
+
+const verificarAutenticado = (usuario, res) => {
+  if (!usuario) {
+    error401(res, 'Usuario no autenticado');
+    return false;
+  }
+  return true;
+};
+
+const validarIdPedido = (id, res) => {
+  if (!validarId(id)) {
+    error400(res, 'ID de pedido inválido');
+    return false;
+  }
+  return true;
+};
+
 // VALIDADORES REUTILIZABLES
 const REGEX_CIUDAD = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/;
-const ESTADOS_VALIDOS = ['Pendiente', 'Abonado', 'Listo', 'Pagado', 'En Proceso', 'Enviado', 'Entregado', 'Cancelado'];
 const ESTADOS_ACTIVOS_ADMIN = ['Abonado', 'Listo', 'Pagado', 'En Proceso', 'Enviado', 'Entregado'];
 
 const validarCiudad = (ciudad) => {
@@ -105,67 +125,36 @@ export const crearPedido = async (req, res) => {
     const { id_formula, direccion_entrega, ciudad_envio, productos } = req.body;
     const usuario = req.user;
 
-    console.log('Usuario autenticado:', usuario);
-
-    if (!usuario) {
-      return res.status(401).json({
-        success: false,
-        message: 'Usuario no autenticado'
-      });
-    }
+    if (!verificarAutenticado(usuario, res)) return;
 
     if (!direccion_entrega) {
-      return res.status(400).json({
-        success: false,
-        message: 'La dirección de entrega es obligatoria'
-      });
+      return error400(res, 'La dirección de entrega es obligatoria');
     }
 
     if (!validarDireccion(direccion_entrega)) {
-      return res.status(400).json({
-        success: false,
-        message: 'La dirección de entrega debe tener entre 5 y 45 caracteres'
-      });
+      return error400(res, 'La dirección de entrega debe tener entre 5 y 45 caracteres');
     }
 
     if (!ciudad_envio) {
-      return res.status(400).json({
-        success: false,
-        message: 'La ciudad de envío es obligatoria'
-      });
+      return error400(res, 'La ciudad de envío es obligatoria');
     }
 
     if (!validarCiudad(ciudad_envio)) {
-      return res.status(400).json({
-        success: false,
-        message: 'La ciudad solo puede contener letras y espacios'
-      });
+      return error400(res, 'La ciudad solo puede contener letras y espacios');
     }
 
     if (!productos || productos.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Debes agregar al menos un producto'
-      });
+      return error400(res, 'Debes agregar al menos un producto');
     }
 
     if (!validarProductos(productos)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cada producto debe tener un id válido y una cantidad mayor o igual a 1'
-      });
+      return error400(res, 'Cada producto debe tener un id válido y una cantidad mayor o igual a 1');
     }
-
-    console.log('Productos recibidos:', productos);
 
     // Verificar que cada producto tenga id_producto
     for (const item of productos) {
       if (!item.id_producto) {
-        console.error('Producto sin id_producto:', item);
-        return res.status(400).json({
-          success: false,
-          message: `Producto sin ID: ${JSON.stringify(item)}`
-        });
+        return error400(res, `Producto sin ID: ${JSON.stringify(item)}`);
       }
     }
 
@@ -181,28 +170,19 @@ export const crearPedido = async (req, res) => {
     }
 
     const costo_envio = calcularCostoEnvio(ciudad_envio);
-    console.log('Ciudad:', ciudad);
-    console.log('Costo envío:', costo_envio);
 
     // Calcular subtotal de productos
     let subtotal = 0;
     for (const item of productos) {
-      console.log(`Buscando producto ID: ${item.id_producto}`);
-      
       const [producto] = await sequelize.query(
         'SELECT precio FROM PRODUCTOS WHERE id_producto = ?',
         { replacements: [item.id_producto], type: sequelize.QueryTypes.SELECT }
       );
       
       if (!producto) {
-        console.error(`Producto ${item.id_producto} no encontrado`);
-        return res.status(404).json({
-          success: false,
-          message: `Producto con ID ${item.id_producto} no encontrado`
-        });
+        return error404(res, `Producto con ID ${item.id_producto} no encontrado`);
       }
       
-      console.log(`Producto ${item.id_producto} encontrado, precio: ${producto.precio}`);
       subtotal += producto.precio * (item.cantidad || 1);
     }
 
@@ -220,18 +200,12 @@ export const crearPedido = async (req, res) => {
       );
 
       if (!formula) {
-        return res.status(404).json({
-          success: false,
-          message: 'Fórmula no encontrada o no está aprobada'
-        });
+        return error404(res, 'Fórmula no encontrada o no está aprobada');
       }
 
       // Verificar que la fórmula pertenece al usuario
       if (formula.id_usuario !== usuario.id) {
-        return res.status(403).json({
-          success: false,
-          message: 'Esta fórmula no te pertenece'
-        });
+        return error403(res, 'Esta fórmula no te pertenece');
       }
 
       costo_formula = formula.costo || 0;
@@ -253,7 +227,6 @@ export const crearPedido = async (req, res) => {
     }
     
     const fechaEstimadaStr = fechaEstimada.toISOString().split('T')[0];
-    console.log('Fecha estimada calculada:', fechaEstimadaStr);
 
     // Crear el pedido CON fecha_estimada
     const id_pedido = await PedidoModelo.crear({
@@ -305,25 +278,18 @@ export const obtenerMisPedidos = async (req, res) => {
   try {
     const usuario = req.user;
 
-    if (!usuario) {
-      return res.status(401).json({
-        success: false,
-        message: 'Usuario no autenticado'
-      });
-    }
+    if (!verificarAutenticado(usuario, res)) return;
 
     // Obtener pedidos del cliente
     const pedidos = await PedidoModelo.obtenerPorCliente(usuario.id);
 
     // Para cada pedido, obtener sus productos
-    const pedidosConProductos = [];
-    for (const pedido of pedidos) {
-      const productos = await PedidoProductoModelo.obtenerPorPedido(pedido.id_pedido);
-      pedidosConProductos.push({
-        ...pedido,
-        productos: productos
-      });
-    }
+    const pedidosConProductos = await Promise.all(
+      pedidos.map(async (pedido) => {
+        const productos = await PedidoProductoModelo.obtenerPorPedido(pedido.id_pedido);
+        return { ...pedido, productos };
+      })
+    );
 
     res.json({
       success: true,
@@ -342,36 +308,19 @@ export const obtenerPedidoPorId = async (req, res) => {
     const { id } = req.params;
     const usuario = req.user;
 
-    if (!validarId(id)) {
-      return res.status(400).json({
-        success: false,
-        message: 'ID de pedido inválido'
-      });
-    }
-
-    if (!usuario) {
-      return res.status(401).json({
-        success: false,
-        message: 'Usuario no autenticado'
-      });
-    }
+    if (!validarIdPedido(id, res)) return;
+    if (!verificarAutenticado(usuario, res)) return;
 
     const pedido = await PedidoModelo.obtenerPorId(id);
 
     if (!pedido) {
-      return res.status(404).json({
-        success: false,
-        message: 'Pedido no encontrado'
-      });
+      return error404(res, 'Pedido no encontrado');
     }
 
     // Verificar permisos
     const esAdmin = usuario.roles?.includes('ADMIN') || false;
     if (esAdmin && (pedido.estado === 'Pendiente' || pedido.estado === 'Cancelado')) {
-  return res.status(403).json({
-    success: false,
-    message: 'No tienes permiso para ver este pedido'
-  });
+      return error403(res, 'No tienes permiso para ver este pedido');
 }
 
     const productos = await PedidoProductoModelo.obtenerPorPedido(id);
@@ -421,48 +370,25 @@ export const cancelarPedido = async (req, res) => {
     const { id } = req.params;
     const usuario = req.user;
 
-    if (!validarId(id)) {
-      return res.status(400).json({
-        success: false,
-        message: 'ID de pedido inválido'
-      });
-    }
-
-    if (!usuario) {
-      return res.status(401).json({
-        success: false,
-        message: 'Usuario no autenticado'
-      });
-    }
+    if (!validarIdPedido(id, res)) return;
+    if (!verificarAutenticado(usuario, res)) return;
 
     const pedido = await PedidoModelo.obtenerPorId(id);
     if (!pedido) {
-      return res.status(404).json({
-        success: false,
-        message: 'Pedido no encontrado'
-      });
+      return error404(res, 'Pedido no encontrado');
     }
 
     // Verificar si el pedido pertenece al usuario
     if (pedido.id_usuario !== usuario.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'No tienes permiso para cancelar este pedido'
-      });
+      return error403(res, 'No tienes permiso para cancelar este pedido');
     }
 
     if (pedido.estado !== 'Pendiente') {
-      return res.status(400).json({
-        success: false,
-        message: `Solo puedes cancelar pedidos en estado "Pendiente". Estado actual: ${pedido.estado}`
-      });
+      return error400(res, `Solo puedes cancelar pedidos en estado "Pendiente". Estado actual: ${pedido.estado}`);
     }
 
     if (!esTransicionValida(pedido.estado, 'Cancelado')) {
-      return res.status(400).json({
-        success: false,
-        message: `No se puede pasar de "${pedido.estado}" a "Cancelado"`
-      });
+      return error400(res, `No se puede pasar de "${pedido.estado}" a "Cancelado"`);
     }
 
     await PedidoModelo.actualizarEstado(id, 'Cancelado');
@@ -485,34 +411,20 @@ export const marcarPedidoComoListo = async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (!validarId(id)) {
-      return res.status(400).json({
-        success: false,
-        message: 'ID de pedido inválido'
-      });
-    }
+    if (!validarIdPedido(id, res)) return;
 
     const pedido = await PedidoModelo.obtenerPorId(id);
     if (!pedido) {
-      return res.status(404).json({
-        success: false,
-        message: 'Pedido no encontrado'
-      });
+      return error404(res, 'Pedido no encontrado');
     }
 
     // Solo se puede marcar como listo si está en estado ABONADO
     if (pedido.estado !== 'Abonado') {
-      return res.status(400).json({
-        success: false,
-        message: `El pedido debe estar en estado "Abonado". Estado actual: ${pedido.estado}`
-      });
+      return error400(res, `El pedido debe estar en estado "Abonado". Estado actual: ${pedido.estado}`);
     }
 
     if (!esTransicionValida(pedido.estado, 'Listo')) {
-      return res.status(400).json({
-        success: false,
-        message: `No se puede pasar de "${pedido.estado}" a "Listo"`
-      });
+      return error400(res, `No se puede pasar de "${pedido.estado}" a "Listo"`);
     }
 
     // Verificar que tenga un abono del 50%
@@ -524,19 +436,13 @@ export const marcarPedidoComoListo = async (req, res) => {
 
     const tieneAbono50 = pagos.some(p => p.eleccion_pago === '50%');
     if (!tieneAbono50) {
-      return res.status(400).json({
-        success: false,
-        message: 'Este pedido no tiene un abono del 50%. No se puede marcar como LISTO.'
-      });
+      return error400(res, 'Este pedido no tiene un abono del 50%. No se puede marcar como LISTO.');
     }
 
     // Verificar que no tenga pago completo ya
     const tienePago100 = pagos.some(p => p.eleccion_pago === '100%');
     if (tienePago100) {
-      return res.status(400).json({
-        success: false,
-        message: 'Este pedido ya fue pagado completamente (100%). No necesita marcar como LISTO.'
-      });
+      return error400(res, 'Este pedido ya fue pagado completamente (100%). No necesita marcar como LISTO.');
     }
 
     await PedidoModelo.actualizarEstado(id, 'Listo');
@@ -576,10 +482,7 @@ export const obtenerPedidosPorEstado = async (req, res) => {
     const { estado } = req.params;
 
     if (!ESTADOS_ACTIVOS_ADMIN.includes(estado)) {
-      return res.status(400).json({
-        success: false,
-        message: `Estado inválido. Debe ser uno de: ${ESTADOS_ACTIVOS_ADMIN.join(', ')}`
-      });
+      return error400(res, `Estado inválido. Debe ser uno de: ${ESTADOS_ACTIVOS_ADMIN.join(', ')}`);
     }
 
     const pedidos = await PedidoModelo.obtenerPorEstado(estado);
@@ -601,40 +504,23 @@ export const actualizarEstadoPedido = async (req, res) => {
     const { id } = req.params;
     const { estado } = req.body;
 
-    if (!validarId(id)) {
-      return res.status(400).json({
-        success: false,
-        message: 'ID de pedido inválido'
-      });
-    }
+    if (!validarIdPedido(id, res)) return;
 
     if (!estado || typeof estado !== 'string') {
-      return res.status(400).json({
-        success: false,
-        message: 'El estado es requerido'
-      });
+      return error400(res, 'El estado es requerido');
     }
 
     if (!ESTADOS_ACTIVOS_ADMIN.includes(estado)) {
-      return res.status(400).json({
-        success: false,
-        message: `Estado inválido. Debe ser uno de: ${ESTADOS_ACTIVOS_ADMIN.join(', ')}`
-      });
+      return error400(res, `Estado inválido. Debe ser uno de: ${ESTADOS_ACTIVOS_ADMIN.join(', ')}`);
     }
 
     const pedido = await PedidoModelo.obtenerPorId(id);
     if (!pedido) {
-      return res.status(404).json({
-        success: false,
-        message: 'Pedido no encontrado'
-      });
+      return error404(res, 'Pedido no encontrado');
     }
 
     if (!esTransicionValida(pedido.estado, estado)) {
-      return res.status(400).json({
-        success: false,
-        message: `No se puede pasar de "${pedido.estado}" a "${estado}". Transiciones permitidas: ${TRANSICIONES_PERMITIDAS[pedido.estado]?.join(', ') || 'ninguna'}`
-      });
+      return error400(res, `No se puede pasar de "${pedido.estado}" a "${estado}". Transiciones permitidas: ${TRANSICIONES_PERMITIDAS[pedido.estado]?.join(', ') || 'ninguna'}`);
     }
 
     await PedidoModelo.actualizarEstado(id, estado);
@@ -658,25 +544,14 @@ export const actualizarFechaEstimada = async (req, res) => {
     const { id } = req.params;
     const { fecha_estimada } = req.body;
 
-    if (!validarId(id)) {
-      return res.status(400).json({
-        success: false,
-        message: 'ID de pedido inválido'
-      });
-    }
+    if (!validarIdPedido(id, res)) return;
 
     if (!fecha_estimada) {
-      return res.status(400).json({
-        success: false,
-        message: 'La fecha estimada es requerida'
-      });
+      return error400(res, 'La fecha estimada es requerida');
     }
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_estimada)) {
-      return res.status(400).json({
-        success: false,
-        message: 'La fecha debe tener formato YYYY-MM-DD'
-      });
+      return error400(res, 'La fecha debe tener formato YYYY-MM-DD');
     }
 
     const fechaComparar = new Date(`${fecha_estimada}T00:00:00`);
@@ -684,33 +559,21 @@ export const actualizarFechaEstimada = async (req, res) => {
     hoy.setHours(0, 0, 0, 0);
 
     if (isNaN(fechaComparar.getTime())) {
-      return res.status(400).json({
-        success: false,
-        message: 'La fecha estimada no es válida'
-      });
+      return error400(res, 'La fecha estimada no es válida');
     }
 
     if (fechaComparar < hoy) {
-      return res.status(400).json({
-        success: false,
-        message: 'La fecha estimada no puede ser anterior a hoy'
-      });
+      return error400(res, 'La fecha estimada no puede ser anterior a hoy');
     }
 
     const pedido = await PedidoModelo.obtenerPorId(id);
     if (!pedido) {
-      return res.status(404).json({
-        success: false,
-        message: 'Pedido no encontrado'
-      });
+      return error404(res, 'Pedido no encontrado');
     }
 
     const estadosEditablesFecha = ['Abonado', 'Listo', 'Pagado', 'En Proceso'];
     if (!estadosEditablesFecha.includes(pedido.estado)) {
-      return res.status(400).json({
-        success: false,
-        message: `No se puede editar la fecha estimada en estado "${pedido.estado}". Estados permitidos: ${estadosEditablesFecha.join(', ')}`
-      });
+      return error400(res, `No se puede editar la fecha estimada en estado "${pedido.estado}". Estados permitidos: ${estadosEditablesFecha.join(', ')}`);
     }
 
     await PedidoModelo.actualizarFechaEstimada(id, fecha_estimada);
