@@ -1,19 +1,13 @@
 import DistribucionModelo from '../models/Distribucion.js';
 import manejarErrorValidacion from '../utils/manejarErrores.js';
+import {
+  error400,
+  error401,
+  error403,
+  error404,
+  verificarAutenticado
+} from '../utils/respuestas.js';
 import sequelize from '../config/database.js';
-
-const error400 = (res, message) => res.status(400).json({ success: false, message });
-const error401 = (res, message) => res.status(401).json({ success: false, message });
-const error403 = (res, message) => res.status(403).json({ success: false, message });
-const error404 = (res, message) => res.status(404).json({ success: false, message });
-
-const verificarAutenticado = (usuario, res) => {
-  if (!usuario) {
-    error401(res, 'Usuario no autenticado');
-    return false;
-  }
-  return true;
-};
 
 const validarIdOError = (id, res, mensaje = 'ID inválido') => {
   if (!validarId(id)) {
