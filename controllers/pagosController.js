@@ -47,6 +47,18 @@ const manejarErrorValidacion = (error, res) => {
   });
 };
 
+const error400 = (res, message) => res.status(400).json({ success: false, message });
+const error403 = (res, message) => res.status(403).json({ success: false, message });
+const error404 = (res, message) => res.status(404).json({ success: false, message });
+
+const validarIdOError = (id, res, mensaje = 'ID inválido') => {
+  if (!validarId(id)) {
+    error400(res, mensaje);
+    return false;
+  }
+  return true;
+};
+
 const validarId = (id) => {
   if (id === undefined || id === null || id === '') return false;
   const num = Number(id);
@@ -68,12 +80,7 @@ export const obtenerPagosPorPedido = async (req, res) => {
   try {
     const { pedidoId } = req.params;
 
-    if (!validarId(pedidoId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'ID de pedido inválido'
-      });
-    }
+    if (!validarIdOError(pedidoId, res, 'ID de pedido inválido')) return;
 
     const pagos = await PagoModel.obtenerPorPedido(pedidoId);
     const totalPagado = await PagoModel.obtenerTotalPagado(pedidoId);
@@ -99,31 +106,19 @@ export const crearPago = async (req, res) => {
 
     // Validar campos requeridos
     if (!id_pedido || !eleccion_pago || !monto) {
-      return res.status(400).json({
-        success: false,
-        message: 'Faltan campos requeridos: id_pedido, eleccion_pago, monto'
-      });
+      return error400(res, 'Faltan campos requeridos: id_pedido, eleccion_pago, monto');
     }
 
     if (!validarId(id_pedido)) {
-      return res.status(400).json({
-        success: false,
-        message: 'El ID del pedido debe ser un número válido'
-      });
+      return error400(res, 'El ID del pedido debe ser un número válido');
     }
 
     if (!validarEleccionPago(eleccion_pago)) {
-      return res.status(400).json({
-        success: false,
-        message: 'eleccion_pago debe ser 50% o 100%'
-      });
+      return error400(res, 'eleccion_pago debe ser 50% o 100%');
     }
 
     if (!validarMonto(monto)) {
-      return res.status(400).json({
-        success: false,
-        message: 'El monto debe ser un número mayor a 0'
-      });
+      return error400(res, 'El monto debe ser un número mayor a 0');
     }
 
     // Verificar que el pedido existe
@@ -133,31 +128,22 @@ export const crearPago = async (req, res) => {
     );
 
     if (!pedido) {
-      return res.status(404).json({ success: false, message: 'Pedido no encontrado' });
+      return error404(res, 'Pedido no encontrado');
     }
 
     // VERIFICAR QUE EL PEDIDO PERTENEZCA AL USUARIO
     if (pedido.id_usuario !== usuario.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'No puedes pagar un pedido que no te pertenece'
-      });
+      return error403(res, 'No puedes pagar un pedido que no te pertenece');
     }
 
     // Verificar que el monto no exceda el total del pedido
     if (monto > pedido.total) {
-      return res.status(400).json({
-        success: false,
-        message: `El monto no puede exceder el total del pedido (${pedido.total})`
-      });
+      return error400(res, `El monto no puede exceder el total del pedido (${pedido.total})`);
     }
 
     // Verificar el estado del pedido
     if (pedido.estado === 'Pagado') {
-      return res.status(400).json({
-        success: false,
-        message: 'Este pedido ya está pagado completamente'
-      });
+      return error400(res, 'Este pedido ya está pagado completamente');
     }
 
     // ===== LÓGICA PARA 50% =====
@@ -169,34 +155,22 @@ export const crearPago = async (req, res) => {
 
       if (tieneAbono) {
         if (pedido.estado !== 'Abonado') {
-          return res.status(400).json({
-            success: false,
-            message: 'El pedido debe estar en estado ABONADO para pagar el saldo restante'
-          });
+          return error400(res, 'El pedido debe estar en estado ABONADO para pagar el saldo restante');
         }
 
         if (monto < saldoRestante) {
-          return res.status(400).json({
-            success: false,
-            message: `El saldo restante es ${saldoRestante}. Debes pagar esa cantidad para completar el pago`
-          });
+          return error400(res, `El saldo restante es ${saldoRestante}. Debes pagar esa cantidad para completar el pago`);
         }
       } else {
         const tieneCompleto = await PagoModel.tienePagoCompleto(id_pedido);
         if (tieneCompleto) {
-          return res.status(400).json({
-            success: false,
-            message: 'Este pedido ya fue pagado completamente'
-          });
+          return error400(res, 'Este pedido ya fue pagado completamente');
         }
 
         const monto50Esperado = pedido.total / 2;
         const margenError = 100;
         if (Math.abs(monto - monto50Esperado) > margenError) {
-          return res.status(400).json({
-            success: false,
-            message: `El monto debe ser aproximadamente el 50% del total (${monto50Esperado})`
-          });
+          return error400(res, `El monto debe ser aproximadamente el 50% del total (${monto50Esperado})`);
         }
       }
     }
@@ -208,26 +182,17 @@ export const crearPago = async (req, res) => {
 
       const tieneCompleto = await PagoModel.tienePagoCompleto(id_pedido);
       if (tieneCompleto) {
-        return res.status(400).json({
-          success: false,
-          message: 'Este pedido ya fue pagado completamente'
-        });
+        return error400(res, 'Este pedido ya fue pagado completamente');
       }
 
       const tieneAbono = await PagoModel.tieneAbono50(id_pedido);
       if (tieneAbono) {
         if (monto < saldoRestante) {
-          return res.status(400).json({
-            success: false,
-            message: `El saldo restante es ${saldoRestante}. Debes pagar esa cantidad para completar`
-          });
+          return error400(res, `El saldo restante es ${saldoRestante}. Debes pagar esa cantidad para completar`);
         }
       } else {
         if (Math.abs(monto - pedido.total) > 100) {
-          return res.status(400).json({
-            success: false,
-            message: `El monto debe ser el total del pedido (${pedido.total}) para pago completo`
-          });
+          return error400(res, `El monto debe ser el total del pedido (${pedido.total}) para pago completo`);
         }
       }
     }
@@ -252,7 +217,6 @@ export const crearPago = async (req, res) => {
       setTimeout(async () => {
         try {
           await PagoModel.confirmarPago(nuevoId);
-          console.log(` Pago #${nuevoId} auto-confirmado (simulado)`);
         } catch (err) {
           console.error(' Error auto-confirmando pago:', err);
         }
@@ -380,20 +344,15 @@ export const confirmarPago = async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (!validarId(id)) {
-      return res.status(400).json({
-        success: false,
-        message: 'ID de pago inválido'
-      });
-    }
+    if (!validarIdOError(id, res, 'ID de pago inválido')) return;
 
     const pago = await PagoModel.obtenerPorId(id);
     if (!pago) {
-      return res.status(404).json({ success: false, message: 'Pago no encontrado' });
+      return error404(res, 'Pago no encontrado');
     }
 
     if (pago.estado === 'Confirmado') {
-      return res.status(400).json({ success: false, message: 'El pago ya está confirmado' });
+      return error400(res, 'El pago ya está confirmado');
     }
 
     await PagoModel.confirmarPago(id);
@@ -431,23 +390,15 @@ export const rechazarPago = async (req, res) => {
     const { id } = req.params;
     const { motivo } = req.body;
 
-    if (!validarId(id)) {
-      return res.status(400).json({
-        success: false,
-        message: 'ID de pago inválido'
-      });
-    }
+    if (!validarIdOError(id, res, 'ID de pago inválido')) return;
 
     const pago = await PagoModel.obtenerPorId(id);
     if (!pago) {
-      return res.status(404).json({ success: false, message: 'Pago no encontrado' });
+      return error404(res, 'Pago no encontrado');
     }
 
     if (pago.estado === 'Confirmado') {
-      return res.status(400).json({
-        success: false,
-        message: 'No se puede rechazar un pago ya confirmado'
-      });
+      return error400(res, 'No se puede rechazar un pago ya confirmado');
     }
 
     await PagoModel.rechazarPago(id);
@@ -470,12 +421,7 @@ export const verificarSaldoPedido = async (req, res) => {
   try {
     const { pedidoId } = req.params;
 
-    if (!validarId(pedidoId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'ID de pedido inválido'
-      });
-    }
+    if (!validarIdOError(pedidoId, res, 'ID de pedido inválido')) return;
 
     const [pedido] = await sequelize.query(
       'SELECT * FROM PEDIDOS WHERE id_pedido = ?',
@@ -483,7 +429,7 @@ export const verificarSaldoPedido = async (req, res) => {
     );
 
     if (!pedido) {
-      return res.status(404).json({ success: false, message: 'Pedido no encontrado' });
+      return error404(res, 'Pedido no encontrado');
     }
 
     const totalPagado = await PagoModel.obtenerTotalPagado(pedidoId);
