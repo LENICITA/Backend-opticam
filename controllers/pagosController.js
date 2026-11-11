@@ -1,51 +1,12 @@
 // src/controllers/pagosController.js
 import PagoModel from '../models/pagoModel.js';
+import manejarErrorValidacion from '../utils/manejarErrores.js';
 import sequelize from '../config/database.js';
 import { boldClient } from '../config/bold.js';
 
 const esDesarrollo = process.env.NODE_ENV === 'development' || process.env.BOLD_MODO === 'TEST';
 
 const BACKEND_PUBLIC_URL = process.env.BACKEND_PUBLIC_URL || 'https://TU-SUBDOMINIO.ngrok-free.app';
-
-const manejarErrorValidacion = (error, res) => {
-  if (error.name === 'SequelizeValidationError') {
-    const mensajes = error.errors.map(e => e.message);
-    return res.status(400).json({
-      success: false,
-      message: mensajes[0],
-      errores: mensajes
-    });
-  }
-
-  if (error.name === 'SequelizeUniqueConstraintError') {
-    return res.status(400).json({
-      success: false,
-      message: 'El valor ya existe en la base de datos'
-    });
-  }
-
-  if (error.name === 'SequelizeForeignKeyConstraintError') {
-    return res.status(400).json({
-      success: false,
-      message: 'Referencia inválida en la base de datos'
-    });
-  }
-
-  if (error.name === 'SequelizeDatabaseError') {
-    console.error('Error de base de datos:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Error al procesar la solicitud en la base de datos'
-    });
-  }
-
-  console.error('Error interno no controlado:', error);
-  return res.status(500).json({
-    success: false,
-    message: 'Error interno del servidor',
-    error: process.env.NODE_ENV === 'development' ? error.message : undefined
-  });
-};
 
 const error400 = (res, message) => res.status(400).json({ success: false, message });
 const error403 = (res, message) => res.status(403).json({ success: false, message });
