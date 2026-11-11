@@ -1,52 +1,7 @@
 import FormulaModelo from '../models/formula.js';
+import manejarErrorValidacion from '../utils/manejarErrores.js';
 import { obtenerUrlImagen } from '../utils/imageUtils.js';
 import cloudinary from '../config/cloudinary.js';
-
-// HELPER: Manejo centralizado de errores
-const manejarErrorValidacion = (error, res) => {
-  // Errores de validación de Sequelize (msg personalizados en el modelo)
-  if (error.name === 'SequelizeValidationError') {
-    const mensajes = error.errors.map(e => e.message);
-    return res.status(400).json({
-      success: false,
-      message: mensajes[0],
-      errores: mensajes
-    });
-  }
-
-  // Campos únicos duplicados
-  if (error.name === 'SequelizeUniqueConstraintError') {
-    return res.status(400).json({
-      success: false,
-      message: 'El valor ya existe en la base de datos'
-    });
-  }
-
-  // Error de FK
-  if (error.name === 'SequelizeForeignKeyConstraintError') {
-    return res.status(400).json({
-      success: false,
-      message: 'Referencia inválida en la base de datos'
-    });
-  }
-
-  // Error de BD (conexión, sintaxis SQL, etc.)
-  if (error.name === 'SequelizeDatabaseError') {
-    console.error('Error de base de datos:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Error al procesar la solicitud en la base de datos'
-    });
-  }
-
-  // Cualquier otro error → 500
-  console.error('Error interno no controlado:', error);
-  return res.status(500).json({
-    success: false,
-    message: 'Error interno del servidor',
-    error: process.env.NODE_ENV === 'development' ? error.message : undefined
-  });
-};
 
 const error400 = (res, message) => res.status(400).json({ success: false, message });
 const error403 = (res, message) => res.status(403).json({ success: false, message });
