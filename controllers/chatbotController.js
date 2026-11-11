@@ -1,38 +1,6 @@
 // controllers/chatbotController.js
 import ChatBot from '../models/chatbot.js';
-
-// HELPER: Manejo centralizado de errores
-const manejarErrorValidacion = (error, res) => {
-  if (error.name === 'SequelizeValidationError') {
-    const mensajes = error.errors.map(e => e.message);
-    return res.status(400).json({
-      success: false,
-      message: mensajes[0],
-      errores: mensajes
-    });
-  }
-
-  if (error.name === 'SequelizeUniqueConstraintError') {
-    return res.status(400).json({
-      success: false,
-      message: 'El valor ya existe en la base de datos'
-    });
-  }
-
-  if (error.name === 'SequelizeForeignKeyConstraintError') {
-    return res.status(400).json({
-      success: false,
-      message: 'Referencia inválida en la base de datos'
-    });
-  }
-
-  console.error('Error interno no controlado:', error);
-  return res.status(500).json({
-    success: false,
-    message: 'Error interno del servidor',
-    error: process.env.NODE_ENV === 'development' ? error.message : undefined
-  });
-};
+import manejarErrorValidacion from '../utils/manejarErrores.js';
 
 const error400 = (res, message) =>
   res.status(400).json({ success: false, message });
