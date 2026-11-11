@@ -1,4 +1,5 @@
 // controllers/contactoController.js
+import manejarErrorValidacion from '../utils/manejarErrores.js';
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 
@@ -22,25 +23,6 @@ transporter.verify((error) => {
     console.log(' Servidor SMTP listo para enviar correos');
   }
 });
-
-// HELPER: Manejo centralizado de errores
-const manejarErrorValidacion = (error, res) => {
-  if (error.name === 'SequelizeValidationError') {
-    const mensajes = error.errors.map(e => e.message);
-    return res.status(400).json({
-      success: false,
-      message: mensajes[0],
-      errores: mensajes
-    });
-  }
-
-  console.error('Error interno no controlado:', error);
-  return res.status(500).json({
-    success: false,
-    message: 'Error interno del servidor',
-    error: process.env.NODE_ENV === 'development' ? error.message : undefined
-  });
-};
 
 // VALIDADORES REUTILIZABLES
 const REGEX_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
