@@ -438,39 +438,51 @@ export const obtenerDistribucionPorId = async (req, res) => {
   }
 };
 
+const validarAccesoEntrega = async (req, res, { estadoDestino, mensajePermiso, mensajeEstado }) => {
+  const { id } = req.params;
+  const usuario = req.user;
+
+  if (!validarIdOError(id, res, 'ID de distribución inválido')) return null;
+  if (!verificarAutenticado(usuario, res)) return null;
+
+  const distribucion = await DistribucionModelo.obtenerPorId(id);
+  if (!distribucion) {
+    error404(res, 'Distribución no encontrada');
+    return null;
+  }
+
+  const esAdmin = usuario.roles?.includes('ADMIN') || false;
+  const esRepartidor = usuario.roles?.includes('REPARTIDOR') || false;
+
+  if (esRepartidor && distribucion.id_usuario !== usuario.id) {
+    error403(res, mensajePermiso);
+    return null;
+  }
+
+  if (!await verificarAdminNoBogota(esAdmin, distribucion.id_pedido, res)) return null;
+
+  if (!esTransicionValida(distribucion.estado, estadoDestino)) {
+    error400(res, mensajeEstado(distribucion.estado));
+    return null;
+  }
+
+  return { distribucion, usuario };
+};
+
 // REPARTIDOR - INICIAR ENTREGA
 export const iniciarEntrega = async (req, res) => {
   try {
-    const { id } = req.params;
-    const usuario = req.user;
+    const resultado = await validarAccesoEntrega(req, res, {
+      estadoDestino: 'EN_ENTREGA',
+      mensajePermiso: 'No tienes permiso para iniciar esta entrega',
+      mensajeEstado: (estado) => `No puedes iniciar una entrega en estado ${estado}`
+    });
+    if (!resultado) return;
 
-    if (!validarIdOError(id, res, 'ID de distribución inválido')) return;
-    if (!verificarAutenticado(usuario, res)) return;
+    const { distribucion } = resultado;
 
-    const distribucion = await DistribucionModelo.obtenerPorId(id);
+    const distribucionActualizada = await DistribucionModelo.iniciarEntrega(req.params.id);
 
-    if (!distribucion) {
-      return error404(res, 'Distribución no encontrada');
-    }
-
-    // Verificar permisos
-    const esAdmin = usuario.roles?.includes('ADMIN') || false;
-    const esRepartidor = usuario.roles?.includes('REPARTIDOR') || false;
-
-    //  Si es repartidor, solo puede iniciar sus propias distribuciones
-    if (esRepartidor && distribucion.id_usuario !== usuario.id) {
-      return error403(res, 'No tienes permiso para iniciar esta entrega');
-    }
-
-    if (!await verificarAdminNoBogota(esAdmin, distribucion.id_pedido, res)) return;
-
-    if (!esTransicionValida(distribucion.estado, 'EN_ENTREGA')) {
-      return error400(res, `No puedes iniciar una entrega en estado ${distribucion.estado}`);
-    }
-
-    const distribucionActualizada = await DistribucionModelo.iniciarEntrega(id);
-
-    //  Actualizar pedido a ENVIADO
     await sequelize.query(
       'UPDATE PEDIDOS SET estado = "Enviado" WHERE id_pedido = ?',
       { replacements: [distribucion.id_pedido] }
@@ -492,43 +504,27 @@ export const marcarEntregado = async (req, res) => {
   try {
     const { id } = req.params;
     const { observacion } = req.body;
-    const usuario = req.user;
 
-    if (!validarIdOError(id, res, 'ID de distribución inválido')) return;
     if (!validarObservacion(observacion)) {
       return error400(res, 'La observación no puede superar los 5000 caracteres');
     }
-    if (!verificarAutenticado(usuario, res)) return;
 
-    const distribucion = await DistribucionModelo.obtenerPorId(id);
+    const resultado = await validarAccesoEntrega(req, res, {
+      estadoDestino: 'ENTREGADO',
+      mensajePermiso: 'No tienes permiso para marcar esta entrega',
+      mensajeEstado: (estado) => `No puedes marcar como entregado en estado ${estado}`
+    });
+    if (!resultado) return;
 
-    if (!distribucion) {
-      return error404(res, 'Distribución no encontrada');
-    }
+    const { distribucion } = resultado;
 
-    // Verificar permisos
-    const esAdmin = usuario.roles?.includes('ADMIN') || false;
-    const esRepartidor = usuario.roles?.includes('REPARTIDOR') || false;
-
-    // Si es repartidor, solo puede marcar sus propias distribuciones
-    if (esRepartidor && distribucion.id_usuario !== usuario.id) {
-      return error403(res, 'No tienes permiso para marcar esta entrega');
-    }
-
-    if (!await verificarAdminNoBogota(esAdmin, distribucion.id_pedido, res)) return;
-
-    if (!esTransicionValida(distribucion.estado, 'ENTREGADO')) {
-      return error400(res, `No puedes marcar como entregado en estado ${distribucion.estado}`);
-    }
-
-    // Agregar observación si se proporcionó
     if (observacion) {
       const obsActual = distribucion.observaciones || '';
       await sequelize.query(
         `UPDATE DISTRIBUCIONES 
          SET observaciones = CONCAT(?, '\\n', ?) 
          WHERE id_distribucion = ?`,
-        { 
+        {
           replacements: [obsActual, ` ENTREGADO: ${observacion}`, id],
           type: sequelize.QueryTypes.UPDATE
         }
