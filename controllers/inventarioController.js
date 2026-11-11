@@ -1,47 +1,7 @@
 import Inventario from '../models/inventario.js';
+import manejarErrorValidacion from '../utils/manejarErrores.js';
 import { obtenerUrlImagen, obtenerThumbnail } from '../utils/imageUtils.js';
 import cloudinary from '../config/cloudinary.js';
-
-const manejarErrorValidacion = (error, res) => {
-  if (error.name === 'SequelizeValidationError') {
-    const mensajes = error.errors.map(e => e.message);
-    return res.status(400).json({
-      success: false,
-      message: mensajes[0],
-      errores: mensajes
-    });
-  }
-
-  if (error.name === 'SequelizeUniqueConstraintError') {
-    const campo = error.errors[0]?.path || 'campo';
-    return res.status(400).json({
-      success: false,
-      message: `El ${campo} ya está registrado`
-    });
-  }
-
-  if (error.name === 'SequelizeForeignKeyConstraintError') {
-    return res.status(400).json({
-      success: false,
-      message: 'Referencia inválida en la base de datos'
-    });
-  }
-
-  if (error.name === 'SequelizeDatabaseError') {
-    console.error('Error de base de datos:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Error al procesar la solicitud en la base de datos'
-    });
-  }
-
-  console.error('Error interno no controlado:', error);
-  return res.status(500).json({
-    success: false,
-    message: 'Error interno del servidor',
-    error: process.env.NODE_ENV === 'development' ? error.message : undefined
-  });
-};
 
 const REGEX_COLOR = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/;
 const CATEGORIAS_VALIDAS = [1, 2, 3];
