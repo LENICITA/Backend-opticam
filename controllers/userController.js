@@ -5,45 +5,10 @@ import {
     RolUsuario,
     Distribucion
 } from "../models/relaciones.js";
+import manejarErrorValidacion from '../utils/manejarErrores.js';
 import sequelize from "../config/database.js";
 import { generateToken } from "../utils/generadorToken.js";
 import { Op } from "sequelize";
-
-// HELPER: Manejo centralizado de errores
-const manejarErrorValidacion = (error, res) => {
-    if (error.name === 'SequelizeValidationError') {
-        const mensajes = error.errors.map(e => e.message);
-        return res.status(400).json({
-            success: false,
-            message: mensajes[0],
-            errores: mensajes
-        });
-    }
-    if (error.name === 'SequelizeUniqueConstraintError') {
-        const campo = error.errors[0]?.path || 'campo';
-        const mensajes = {
-            email: 'El email ya está registrado',
-            documento: 'El documento ya está registrado',
-            placa: 'La placa ya está registrada'
-        };
-        return res.status(400).json({
-            success: false,
-            message: mensajes[campo] || `El ${campo} ya está registrado`
-        });
-    }
-    if (error.name === 'SequelizeForeignKeyConstraintError') {
-        return res.status(400).json({
-            success: false,
-            message: 'Referencia inválida en la base de datos'
-        });
-    }
-    console.error('Error interno no controlado:', error);
-    return res.status(500).json({
-        success: false,
-        message: 'Error interno del servidor',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-};
 
 const rollbackError = async (transaction, res, status, message) => {
     await transaction.rollback();
