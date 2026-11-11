@@ -48,6 +48,36 @@ const manejarErrorValidacion = (error, res) => {
   });
 };
 
+const error400 = (res, message) => res.status(400).json({ success: false, message });
+const error403 = (res, message) => res.status(403).json({ success: false, message });
+const error404 = (res, message) => res.status(404).json({ success: false, message });
+
+const enriquecerFormula = (formula) => {
+  const plain = formula.toJSON ? formula.toJSON() : formula;
+  return {
+    ...plain,
+    imagen_url: obtenerUrlImagen(plain.imagen_formula, 400, 400)
+  };
+};
+
+const enriquecerFormulas = (formulas) => formulas.map(enriquecerFormula);
+
+const extraerPublicId = (url) => {
+  const urlParts = url.split('/');
+  const publicIdWithExt = urlParts[urlParts.length - 1];
+  return publicIdWithExt.split('.')[0];
+};
+
+const eliminarImagenCloudinary = async (urlImagen) => {
+  if (!urlImagen) return;
+  try {
+    const publicId = extraerPublicId(urlImagen);
+    await cloudinary.uploader.destroy(`opticam/formulas/${publicId}`);
+  } catch (error) {
+    console.error('Error al eliminar imagen de Cloudinary:', error.message);
+  }
+};
+
 // CONSTANTES Y VALIDADORES
 const CONDICIONES_VALIDAS = ['DALTONISMO', 'ASTIGMATISMO', 'MIOPIA', 'BAJA VISION'];
 const ESTADOS_VALIDOS = ['Pendiente', 'Aprobado', 'Rechazado'];
@@ -77,31 +107,19 @@ export const subirFormula = async (req, res) => {
     const usuario = req.user;
 
     if (!condicion) {
-      return res.status(400).json({
-        success: false,
-        message: 'El campo condicion es requerido'
-      });
+      return error400(res, 'El campo condicion es requerido');
     }
 
     if (!validarCondicion(condicion)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Condición inválida. Debe ser: DALTONISMO, ASTIGMATISMO, MIOPIA o BAJA VISION'
-      });
+      return error400(res, 'Condición inválida. Debe ser: DALTONISMO, ASTIGMATISMO, MIOPIA o BAJA VISION');
     }
 
     if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: 'La imagen de la fórmula es requerida'
-      });
+      return error400(res, 'La imagen de la fórmula es requerida');
     }
 
     if (observaciones && observaciones.length > 200) {
-      return res.status(400).json({
-        success: false,
-        message: 'Las observaciones no pueden superar los 200 caracteres'
-      });
+      return error400(res, 'Las observaciones no pueden superar los 200 caracteres');
     }
 
     const nuevoId = await FormulaModelo.crear({
@@ -113,15 +131,10 @@ export const subirFormula = async (req, res) => {
 
     const nuevaFormula = await FormulaModelo.obtenerPorId(nuevoId);
 
-    const formulaConImagen = {
-      ...nuevaFormula.toJSON ? nuevaFormula.toJSON() : nuevaFormula,
-      imagen_url: obtenerUrlImagen(nuevaFormula.imagen_formula, 400, 400)
-    };
-
     res.status(201).json({
       success: true,
       message: 'Fórmula subida exitosamente. Esperando revisión del administrador',
-      data: formulaConImagen
+      data: enriquecerFormula(nuevaFormula)
     });
 
   } catch (error) {
@@ -139,40 +152,21 @@ export const eliminarFormula = async (req, res) => {
     const formula = await FormulaModelo.obtenerPorId(id);
     
     if (!formula) {
-      return res.status(404).json({
-        success: false,
-        message: 'Fórmula no encontrada'
-      });
+      return error404(res, 'Fórmula no encontrada');
     }
 
     // Verificar que sea de este usuario
     if (formula.id_usuario !== usuario.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'No puedes eliminar una fórmula que no te pertenece'
-      });
+      return error403(res, 'No puedes eliminar una fórmula que no te pertenece');
     }
 
     // Solo puede eliminar si está Pendiente
     if (formula.estado !== 'Pendiente') {
-      return res.status(400).json({
-        success: false,
-        message: 'Solo puedes eliminar fórmulas en estado Pendiente'
-      });
+      return error400(res, 'Solo puedes eliminar fórmulas en estado Pendiente');
     }
 
     // ELIMINAR IMAGEN DE CLOUDINARY
-  
-    if (formula.imagen_formula) {
-      try {
-        const urlParts = formula.imagen_formula.split('/');
-        const publicIdWithExt = urlParts[urlParts.length - 1];
-        const publicId = publicIdWithExt.split('.')[0];
-        await cloudinary.uploader.destroy(`opticam/formulas/${publicId}`);
-      } catch (error) {
-        console.log('Error al eliminar imagen:', error);
-      }
-    }
+    await eliminarImagenCloudinary(formula.imagen_formula);
 
     await FormulaModelo.eliminar(id);
 
@@ -195,13 +189,7 @@ export const obtenerMisFormulas = async (req, res) => {
 
     const formulas = await FormulaModelo.obtenerPorCliente(usuario.id);
 
-    const formulasConImagen = formulas.map(f => {
-      const plain = f.toJSON ? f.toJSON() : f;
-      return {
-        ...plain,
-        imagen_url: obtenerUrlImagen(plain.imagen_formula, 400, 400)
-      };
-    });
+    const formulasConImagen = enriquecerFormulas(formulas);
 
     res.json({
       success: true,
@@ -225,29 +213,18 @@ export const obtenerFormulaPorId = async (req, res) => {
     const formula = await FormulaModelo.obtenerPorId(id);
 
     if (!formula) {
-      return res.status(404).json({
-        success: false,
-        message: 'Fórmula no encontrada'
-      });
+      return error404(res, 'Fórmula no encontrada');
     }
 
     const esAdmin = usuario.roles?.includes('ADMIN') || false;
         
         if (!esAdmin && formula.id_usuario !== usuario.id) {
-            return res.status(403).json({
-                success: false,
-                message: 'No tienes permiso para ver esta fórmula'
-            });
+            return error403(res, 'No tienes permiso para ver esta fórmula');
         }
-
-    const formulaConImagen = {
-      ...(formula.toJSON ? formula.toJSON() : formula),
-      imagen_url: obtenerUrlImagen(formula.imagen_formula, 400, 400)
-    };
 
     res.json({
       success: true,
-      data: formulaConImagen
+      data: enriquecerFormula(formula)
     });
 
   } catch (error) {
@@ -262,10 +239,7 @@ export const obtenerTodasLasFormulas = async (req, res) => {
   try {
     const formulas = await FormulaModelo.obtenerTodas();
 
-    const formulasConImagen = formulas.map(f => ({
-      ...f,
-      imagen_url: obtenerUrlImagen(f.imagen_formula, 400, 400)
-    }));
+    const formulasConImagen = enriquecerFormulas(formulas);
 
     res.json({
       success: true,
@@ -285,10 +259,7 @@ export const obtenerFormulasPendientes = async (req, res) => {
   try {
     const formulas = await FormulaModelo.obtenerPendientes();
 
-    const formulasConImagen = formulas.map(f => ({
-      ...f,
-      imagen_url: obtenerUrlImagen(f.imagen_formula, 400, 400)
-    }));
+    const formulasConImagen = enriquecerFormulas(formulas);
 
     res.json({
       success: true,
@@ -310,46 +281,28 @@ export const asignarPrecioFormula = async (req, res) => {
     const { costo, estado } = req.body;
 
     if (costo === undefined || costo === null || costo === '') {
-      return res.status(400).json({
-        success: false,
-        message: 'El campo costo es requerido'
-      });
+      return error400(res, 'El campo costo es requerido');
     }
 
     if (isNaN(Number(costo))) {
-      return res.status(400).json({
-        success: false,
-        message: 'El costo debe ser un número válido'
-      });
+      return error400(res, 'El costo debe ser un número válido');
     }
 
     if (Number(costo) <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'El costo debe ser mayor a 0'
-      });
+      return error400(res, 'El costo debe ser mayor a 0');
     }
 
     if (estado && !validarEstado(estado)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Estado inválido. Debe ser: Pendiente, Aprobado o Rechazado'
-      });
+      return error400(res, 'Estado inválido. Debe ser: Pendiente, Aprobado o Rechazado');
     }
 
     const formula = await FormulaModelo.obtenerPorId(id);
     if (!formula) {
-      return res.status(404).json({
-        success: false,
-        message: 'Fórmula no encontrada'
-      });
+      return error404(res, 'Fórmula no encontrada');
     }
 
     if (formula.estado === 'Rechazado') {
-      return res.status(400).json({
-        success: false,
-        message: 'No se puede asignar precio a una fórmula rechazada'
-      });
+      return error400(res, 'No se puede asignar precio a una fórmula rechazada');
     }
 
     const estadoFinal = estado || 'Aprobado';
@@ -357,15 +310,10 @@ export const asignarPrecioFormula = async (req, res) => {
 
     const formulaActualizada = await FormulaModelo.obtenerPorId(id);
 
-    const formulaConImagen = {
-      ...(formulaActualizada.toJSON ? formulaActualizada.toJSON() : formulaActualizada),
-      imagen_url: obtenerUrlImagen(formulaActualizada.imagen_formula, 400, 400)
-    };
-
     res.json({
       success: true,
       message: `Precio asignado exitosamente. Estado: ${estadoFinal}`,
-      data: formulaConImagen
+      data: enriquecerFormula(formulaActualizada)
     });
 
   } catch (error) {
@@ -382,40 +330,26 @@ export const cambiarEstadoFormula = async (req, res) => {
     const { estado } = req.body;
 
     if (!estado) {
-      return res.status(400).json({
-        success: false,
-        message: 'El estado es requerido'
-      });
+      return error400(res, 'El estado es requerido');
     }
 
     if (!validarEstado(estado)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Estado inválido. Debe ser: Pendiente, Aprobado o Rechazado'
-      });
+      return error400(res, 'Estado inválido. Debe ser: Pendiente, Aprobado o Rechazado');
     }
 
     const formula = await FormulaModelo.obtenerPorId(id);
     if (!formula) {
-      return res.status(404).json({
-        success: false,
-        message: 'Fórmula no encontrada'
-      });
+      return error404(res, 'Fórmula no encontrada');
     }
 
     await FormulaModelo.cambiarEstado(id, estado);
 
     const formulaActualizada = await FormulaModelo.obtenerPorId(id);
 
-    const formulaConImagen = {
-      ...(formulaActualizada.toJSON ? formulaActualizada.toJSON() : formulaActualizada),
-      imagen_url: obtenerUrlImagen(formulaActualizada.imagen_formula, 400, 400)
-    };
-
     res.json({
       success: true,
       message: `Estado actualizado a: ${estado}`,
-      data: formulaConImagen
+      data: enriquecerFormula(formulaActualizada)
     });
 
   } catch (error) {
@@ -434,17 +368,11 @@ export const verificarFormulaAprobada = async (req, res) => {
     const formula = await FormulaModelo.obtenerPorId(id);
 
     if (!formula) {
-      return res.status(404).json({
-        success: false,
-        message: 'Fórmula no encontrada'
-      });
+      return error404(res, 'Fórmula no encontrada');
     }
 
     if (formula.id_usuario !== usuario.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'No tienes permiso para verificar esta fórmula'
-      });
+      return error403(res, 'No tienes permiso para verificar esta fórmula');
     }
 
     const aprobada = formula.estado === 'Aprobado';
