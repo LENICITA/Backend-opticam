@@ -1,38 +1,13 @@
 import sequelize from "../config/database.js";
 import PDFDocument from 'pdfkit';
 import Inventario from '../models/inventario.js';
+import manejarErrorValidacion from '../utils/manejarErrores.js';
 import {
     generarGraficoBarras,
     generarGraficoLineas,
     generarGraficoDona,
     generarGraficoBarrasHorizontales
 } from '../utils/chartGenerator.js';
-
-const manejarErrorValidacion = (error, res) => {
-  if (error.name === 'SequelizeValidationError') {
-    const mensajes = error.errors.map(e => e.message);
-    return res.status(400).json({
-      success: false,
-      message: mensajes[0],
-      errores: mensajes
-    });
-  }
-
-  if (error.name === 'SequelizeDatabaseError') {
-    console.error('Error de base de datos:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Error al procesar la solicitud en la base de datos'
-    });
-  }
-
-  console.error('Error interno no controlado:', error);
-  return res.status(500).json({
-    success: false,
-    message: 'Error interno del servidor',
-    error: process.env.NODE_ENV === 'development' ? error.message : undefined
-  });
-};
 
 const REGEX_FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
