@@ -67,6 +67,39 @@ const options = {
           }
         },
 
+ClienteEnDistribucionSimple: {
+  type: 'object',
+  nullable: true,
+  properties: {
+    nombre: { type: 'string' },
+    telefono: { type: 'string' },
+    ciudad: { type: 'string' }
+  }
+},
+
+ClienteEnDistribucionCompleto: {
+  type: 'object',
+  nullable: true,
+  properties: {
+    nombre: { type: 'string' },
+    telefono: { type: 'string' },
+    email: { type: 'string', format: 'email' },
+    ciudad: { type: 'string' }
+  }
+},
+
+RepartidorEnDistribucion: {
+  type: 'object',
+  nullable: true,
+  properties: {
+    id: { type: 'integer' },
+    nombre: { type: 'string' },
+    email: { type: 'string', format: 'email' },
+    telefono: { type: 'string' },
+    vehiculo: { type: 'string', example: 'MOTO AKT 125 - Placa: ABC12D' }
+  }
+},
+
         // ============ AUTH / USUARIOS ============
         LoginRequest: {
           type: 'object',
@@ -500,15 +533,7 @@ const options = {
                 ciudad_envio: { type: 'string' },
                 total: { type: 'number' },
                 fecha_estimada: { type: 'string', format: 'date', nullable: true },
-                cliente: {
-                  type: 'object',
-                  nullable: true,
-                  properties: {
-                    nombre: { type: 'string' },
-                    telefono: { type: 'string' },
-                    ciudad: { type: 'string' }
-                  }
-                }
+                cliente: { $ref: '#/components/schemas/ClienteEnDistribucionSimple' }
               }
             }
           }
@@ -529,29 +554,10 @@ const options = {
                 ciudad_envio: { type: 'string' },
                 total: { type: 'number' },
                 fecha_estimada: { type: 'string', format: 'date', nullable: true },
-                cliente: {
-                  type: 'object',
-                  nullable: true,
-                  properties: {
-                    nombre: { type: 'string' },
-                    telefono: { type: 'string' },
-                    email: { type: 'string', format: 'email' },
-                    ciudad: { type: 'string' }
-                  }
-                }
+                cliente: { $ref: '#/components/schemas/ClienteEnDistribucionCompleto' }
               }
             },
-            repartidor: {
-              type: 'object',
-              nullable: true,
-              properties: {
-                id: { type: 'integer' },
-                nombre: { type: 'string' },
-                email: { type: 'string', format: 'email' },
-                telefono: { type: 'string' },
-                vehiculo: { type: 'string', example: 'MOTO AKT 125 - Placa: ABC12D' }
-              }
-            },
+            repartidor: { $ref: '#/components/schemas/RepartidorEnDistribucion' },
             cliente: {
               type: 'object',
               nullable: true,
@@ -600,29 +606,10 @@ const options = {
                 ciudad_envio: { type: 'string' },
                 total: { type: 'number' },
                 fecha_estimada: { type: 'string', format: 'date' },
-                cliente: {
-                  type: 'object',
-                  nullable: true,
-                  properties: {
-                    nombre: { type: 'string' },
-                    telefono: { type: 'string' },
-                    email: { type: 'string', format: 'email' },
-                    ciudad: { type: 'string' }
-                  }
-                }
+                cliente: { $ref: '#/components/schemas/ClienteEnDistribucionCompleto' }
               }
             },
-            repartidor: {
-              type: 'object',
-              nullable: true,
-              properties: {
-                id: { type: 'integer' },
-                nombre: { type: 'string' },
-                email: { type: 'string', format: 'email' },
-                telefono: { type: 'string' },
-                vehiculo: { type: 'string', example: 'MOTO AKT 125 - Placa: ABC12D' }
-              }
-            }
+            repartidor: { $ref: '#/components/schemas/RepartidorEnDistribucion' }
           }
         }
 
