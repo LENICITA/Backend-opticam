@@ -215,7 +215,7 @@ const Inventario = {
     if (filtros.marca)        where.marca = filtros.marca;
     if (filtros.color)        where.color = filtros.color;
     if (filtros.material)     where.material = filtros.material;
-    if (filtros.id_categoria) where.id_categoria = parseInt(filtros.id_categoria);
+    if (filtros.id_categoria) where.id_categoria = Number.parseInt(filtros.id_categoria, 10);
 
     if (filtros.busqueda) {
       where[Op.or] = [
@@ -251,7 +251,7 @@ const Inventario = {
 
   getByCategoria: async (id_categoria) => {
     const productos = await Producto.findAll({
-      where: { id_categoria: parseInt(id_categoria) },
+      where: { id_categoria: Number.parseInt(id_categoria, 10) },
       include: INCLUDE_CATEGORIA,
       order: [['id_producto', 'DESC']]
     });
