@@ -50,7 +50,7 @@ const validarEstado = (estado) => {
 const validarCosto = (costo) => {
   if (costo === undefined || costo === null || costo === '') return false;
   const num = Number(costo);
-  return !isNaN(num) && num > 0;
+  return !Number.isNaN(num) && num > 0; 
 };
 
 // ============================================
@@ -239,7 +239,7 @@ export const asignarPrecioFormula = async (req, res) => {
       return error400(res, 'El campo costo es requerido');
     }
 
-    if (isNaN(Number(costo))) {
+    if (Number.isNaN(Number(costo))) {
       return error400(res, 'El costo debe ser un número válido');
     }
 
