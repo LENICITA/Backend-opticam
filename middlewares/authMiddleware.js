@@ -5,8 +5,8 @@ import { Usuario, Role } from '../models/relaciones.js';
 export const authMiddleware = async (req, res, next) => {
     try {
 console.log('Headers recibidos:', encodeURIComponent(JSON.stringify(req.headers)));
-const authHeader = req.headers.authorization;
-console.log('authHeader:', encodeURIComponent(authHeader || ''));
+const headersSeguros = encodeURIComponent(JSON.stringify(req.headers));
+console.log('Headers recibidos:', headersSeguros);
         
         if (!authHeader) {
             console.log('No hay header Authorization');
@@ -25,7 +25,9 @@ console.log('authHeader:', encodeURIComponent(authHeader || ''));
         }
 
                 const token = authHeader.split(' ')[1];
-        console.log('Token extraído:', encodeURIComponent(token ? token.substring(0, 30) + '...' : 'No token'));
+const tokenMostrar = token ? token.substring(0, 30) + '...' : 'No token';
+const tokenSeguro = encodeURIComponent(tokenMostrar);
+console.log('Token extraído:', tokenSeguro);
 
         if (!token || token === 'null' || token === 'undefined' || token === '') {
             console.log('Token vacío o inválido');
