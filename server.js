@@ -31,11 +31,7 @@ const origenesPermitidos = (process.env.CORS_ORIGINS || 'http://localhost:5173')
   .filter(Boolean);
 
 const corsOptions = {
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true); // Postman, curl, Swagger, apps móviles
-    if (origenesPermitidos.includes(origin)) return callback(null, true);
-    return callback(new Error(`Origen no permitido por CORS: ${origin}`));
-  },
+  origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
