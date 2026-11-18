@@ -1,6 +1,7 @@
 // src/controllers/pagosController.js
 import PagoModel from '../models/pagoModel.js';
 import manejarErrorValidacion from '../utils/manejarErrores.js';
+import { escaparHTML } from '../utils/sanitizar.js';
 import sequelize from '../config/database.js';
 import { boldClient } from '../config/bold.js';
 
@@ -23,7 +24,7 @@ const validarIdOError = (id, res, mensaje = 'ID inválido') => {
 const validarId = (id) => {
   if (id === undefined || id === null || id === '') return false;
   const num = Number(id);
-  return !isNaN(num) && num > 0 && Number.isInteger(num);
+  return !Number.isNaN(num) && num > 0 && Number.isInteger(num);
 };
 
 const validarEleccionPago = (eleccion) => {
@@ -33,7 +34,7 @@ const validarEleccionPago = (eleccion) => {
 const validarMonto = (monto) => {
   if (monto === undefined || monto === null || monto === '') return false;
   const num = Number(monto);
-  return !isNaN(num) && num > 0;
+  return !Number.isNaN(num) && num > 0;
 };
 
 // ========== OBTENER PAGOS POR PEDIDO ==========
@@ -259,6 +260,9 @@ export const callbackBold = async (req, res) => {
 
     const { bold_transaction_id, reference } = req.query;
 
+    const transaccionSegura = escaparHTML(bold_transaction_id || 'N/A');
+    const referenciaSegura = escaparHTML(reference || 'N/A');
+
     if (reference) {
       const [pago] = await sequelize.query(
         'SELECT id_pago FROM PAGOS WHERE bold_reference = ? LIMIT 1',
@@ -283,8 +287,8 @@ export const callbackBold = async (req, res) => {
         </head>
         <body>
           <h1>Pago procesado</h1>
-          <p>Transacción: ${bold_transaction_id || 'N/A'}</p>
-          <p>Referencia: ${reference || 'N/A'}</p>
+          <p>Transacción: ${transaccionSegura}</p>
+          <p>Referencia: ${referenciaSegura}</p>
           <p>Serás redirigido en unos segundos...</p>
           <script>
             setTimeout(() => {
