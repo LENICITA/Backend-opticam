@@ -4,14 +4,10 @@ import { Usuario, Role } from '../models/relaciones.js';
 
 export const authMiddleware = async (req, res, next) => {
     try {
-console.log('Headers recibidos:', encodeURIComponent(JSON.stringify(req.headers)));
-const headersSeguros = encodeURIComponent(JSON.stringify(req.headers));
-console.log('Headers recibidos:', headersSeguros);
 
 const authHeader = req.headers.authorization; 
         
         if (!authHeader) {
-            console.log('No hay header Authorization');
             return res.status(401).json({
                 success: false,
                 message: 'No se proporcionó token de autenticación'
@@ -19,7 +15,6 @@ const authHeader = req.headers.authorization;
         }
 
         if (!authHeader.startsWith('Bearer ')) {
-            console.log('Header no empieza con Bearer');
             return res.status(401).json({
                 success: false,
                 message: 'Formato de token inválido. Debe ser: Bearer <token>'
@@ -27,12 +22,8 @@ const authHeader = req.headers.authorization;
         }
 
                 const token = authHeader.split(' ')[1];
-const tokenMostrar = token ? token.substring(0, 30) + '...' : 'No token';
-const tokenSeguro = encodeURIComponent(tokenMostrar);
-console.log('Token extraído:', tokenSeguro);
 
         if (!token || token === 'null' || token === 'undefined' || token === '') {
-            console.log('Token vacío o inválido');
             return res.status(401).json({
                 success: false,
                 message: 'Token inválido'
@@ -40,7 +31,6 @@ console.log('Token extraído:', tokenSeguro);
         }
 
         if (!process.env.JWT_SECRET) {
-            console.error('JWT_SECRET no está definido en .env');
             return res.status(500).json({
                 success: false,
                 message: 'Error de configuración del servidor'
@@ -50,10 +40,7 @@ console.log('Token extraído:', tokenSeguro);
         let decoded;
         try {
             decoded = jwt.verify(token, process.env.JWT_SECRET);
-            console.log('Token decodificado:', encodeURIComponent(JSON.stringify(decoded)));
         } catch (jwtError) {
-            console.error('Error al verificar token:', jwtError.message);
-            
             if (jwtError.name === 'TokenExpiredError') {
                 return res.status(401).json({
                     success: false,
@@ -72,7 +59,6 @@ console.log('Token extraído:', tokenSeguro);
         }
 
         if (!decoded.id) {
-            console.log('Token no contiene campo "id"');
             return res.status(401).json({
                 success: false,
                 message: 'Token inválido: no contiene ID de usuario'
@@ -89,7 +75,6 @@ console.log('Token extraído:', tokenSeguro);
         });
 
         if (!usuario) {
-            console.log('Usuario no encontrado en BD');
             return res.status(401).json({
                 success: false,
                 message: 'Usuario no encontrado'
