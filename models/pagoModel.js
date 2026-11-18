@@ -235,7 +235,7 @@ const PagoModel = {
        WHERE id_pedido = ? AND estado = 'Confirmado'`,
       { replacements: [id_pedido], type: sequelize.QueryTypes.SELECT }
     );
-    return parseFloat(result?.total_pagado) || 0;
+    return Number.parseFloat(result?.total_pagado) || 0;
   },
 
   /**
