@@ -19,11 +19,31 @@ import contactoRoutes from './routes/contactoRoutes.js';
 dotenv.config();
 
 const app = express();
+
+app.disable('x-powered-by'); 
+
 const PORT = process.env.PORT || 5000
-const HOST = process.env.HOST || '10.105.99.52';
+const HOST = process.env.HOST || 'localhost';
+
+const origenesPermitidos = (process.env.CORS_ORIGINS || 'http://localhost:5173')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true); // Postman, curl, Swagger, apps móviles
+    if (origenesPermitidos.includes(origin)) return callback(null, true);
+    return callback(new Error(`Origen no permitido por CORS: ${origin}`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+
+app.use(cors(corsOptions));
 
 // Middlewares
-app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -58,8 +78,8 @@ app.listen(PORT, '0.0.0.0', async () => {
     try {
         await sequelize.authenticate();
         console.log('Conexión a la base de datos establecida');
-        console.log(`Servidor corriendo en http://localhost:${PORT}`);
-        console.log(`Servidor corriendo en http://${HOST}:${PORT}`);
+        console.log(`Servidor corriendo en el puerto ${PORT} - localhost`);
+        console.log(`Servidor corriendo en el puerto ${PORT} - ${HOST}`);
     } catch (error) {
         console.error('Error al conectar a la base de datos:', error);
     }
