@@ -7,6 +7,8 @@ export const authMiddleware = async (req, res, next) => {
 console.log('Headers recibidos:', encodeURIComponent(JSON.stringify(req.headers)));
 const headersSeguros = encodeURIComponent(JSON.stringify(req.headers));
 console.log('Headers recibidos:', headersSeguros);
+
+const authHeader = req.headers.authorization; 
         
         if (!authHeader) {
             console.log('No hay header Authorization');
