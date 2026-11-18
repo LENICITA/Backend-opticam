@@ -7,7 +7,7 @@ import { boldClient } from '../config/bold.js';
 
 const esDesarrollo = process.env.NODE_ENV === 'development' || process.env.BOLD_MODO === 'TEST';
 
-const BACKEND_PUBLIC_URL = process.env.BACKEND_PUBLIC_URL || 'https://TU-SUBDOMINIO.ngrok-free.app';
+const BACKEND_PUBLIC_URL = process.env.BACKEND_PUBLIC_URL || 'https://TU_BACKEND_VERCEL.app';
 
 const error400 = (res, message) => res.status(400).json({ success: false, message });
 const error403 = (res, message) => res.status(403).json({ success: false, message });
@@ -292,7 +292,7 @@ export const callbackBold = async (req, res) => {
           <p>Serás redirigido en unos segundos...</p>
           <script>
             setTimeout(() => {
-              window.location.href = 'http://10.105.99.52:5173/mis-pedidos';
+              window.location.href = 'https://TU_FRONTEND_VERCEL.app/mis-pedidos';
             }, 3000);
           </script>
         </body>
