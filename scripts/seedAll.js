@@ -7,16 +7,15 @@ import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 
-dotenv.config();
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, "../.env"), quiet: true });
 // CONFIGURACIÓN DEL ADMI
 const adminData = {
   nombre_completo: process.env.ADMIN_NOMBRE || "Administrador Sistema",
   telefono: process.env.ADMIN_TELEFONO || "3113578562",
   fecha_nacimiento: process.env.ADMIN_FECHA_NACIMIENTO || "1990-01-01",
-  documento: process.env.ADMIN_DOCUMENTO || 123456789,
+  documento: process.env.ADMIN_DOCUMENTO || 1098765432,
   ciudad: process.env.ADMIN_CIUDAD || "Bogotá",
   direccion: process.env.ADMIN_DIRECCION || "Calle Principal #123",
   email: process.env.ADMIN_EMAIL || "admin@opticam.com",
