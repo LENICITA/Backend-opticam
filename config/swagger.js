@@ -15,9 +15,9 @@ const options = {
       }
     },
     servers: [
-      { url: 'http://localhost:5000', description: 'Servidor local' },
-      { url: 'http://192.168.0.4:5000', description: 'Servidor red local' }
-    ],
+  { url: process.env.SWAGGER_SERVER_LOCAL, description: 'Servidor local' },
+  { url: process.env.SWAGGER_SERVER_LAN,   description: 'Servidor red local' }
+].filter(s => s.url),   
     tags: [
       { name: 'Auth', description: 'Autenticación y recuperación de contraseña' },
       { name: 'Usuarios', description: 'Perfil y registro de clientes' },
