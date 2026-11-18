@@ -99,7 +99,7 @@ const PedidoProductoModelo  = {
        WHERE pp.id_pedido = ?`,
       { replacements: [id_pedido], type: sequelize.QueryTypes.SELECT }
     );
-    return parseFloat(result?.subtotal) || 0;
+    return Number.parseFloat(result?.subtotal) || 0;
   },
 
   // Verificar si un producto está en un pedido
@@ -145,7 +145,7 @@ const PedidoProductoModelo  = {
        WHERE id_pedido = ?`,
       { replacements: [id_pedido], type: sequelize.QueryTypes.SELECT }
     );
-    return parseInt(result?.total_items) || 0;
+    return Number.parseInt(result?.total_items, 10) || 0;
   }
 };
 
