@@ -13,7 +13,6 @@ import pagosRoutes from './routes/PagosRoutes.js';
 import formulaRoutes from './routes/formulaRoutes.js';
 import pedidoRoutes from './routes/pedidoRoutes.js';
 import sequelize from './config/database.js';
-import { Usuario, Vehiculo, Role, RolUsuario, Pedido, Distribucion } from './models/relaciones.js';
 import contactoRoutes from './routes/contactoRoutes.js';
 
 dotenv.config();
@@ -24,11 +23,6 @@ app.disable('x-powered-by');
 
 const PORT = process.env.PORT || 5000
 const HOST = process.env.HOST || 'localhost';
-
-const origenesPermitidos = (process.env.CORS_ORIGINS || 'http://localhost:5173')
-  .split(',')
-  .map(o => o.trim())
-  .filter(Boolean);
 
 const corsOptions = {
   origin: true,
@@ -70,13 +64,17 @@ app.get('/api/health', (req, res) => {
 });
 
 // Iniciar servidor
-app.listen(PORT, '0.0.0.0', async () => {
-    try {
-        await sequelize.authenticate();
-        console.log('Conexión a la base de datos establecida');
-        console.log(`Servidor corriendo en el puerto ${PORT} - localhost`);
-        console.log(`Servidor corriendo en el puerto ${PORT} - ${HOST}`);
-    } catch (error) {
-        console.error('Error al conectar a la base de datos:', error);
-    }
-});
+export default app;
+
+// 2. Si estamos en local (no en Vercel), levantamos el servidor normal
+if (process.env.NODE_ENV !== 'production') {
+    app.listen(PORT, '0.0.0.0', async () => {
+        try {
+            await sequelize.authenticate();
+            console.log('Conexión a la base de datos establecida');
+            console.log(`Servidor corriendo en el puerto ${PORT}`);
+        } catch (error) {
+            console.error('Error al conectar a la base de datos:', error);
+        }
+    });
+}
