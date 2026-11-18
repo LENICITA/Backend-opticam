@@ -354,7 +354,7 @@ const usuario = await Usuario.findOne({
 const enviarCorreoRecuperacion = async ({ emailDestino, nombre, resetLink, emailOriginal, esFalso }) => {
     const transporter = createTransport({
         host: process.env.SMTP_HOST || 'smtp.gmail.com',
-        port: parseInt(process.env.SMTP_PORT) || 587,
+        port: Number.parseInt(process.env.SMTP_PORT, 10) || 587,
         secure: false,
         auth: {
             user: process.env.SMTP_USER,
