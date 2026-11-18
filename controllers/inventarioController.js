@@ -11,7 +11,7 @@ const validarCategoria = (id) => CATEGORIAS_VALIDAS.includes(Number(id));
 const validarPrecio = (precio) => {
   if (precio === undefined || precio === null || precio === '') return false;
   const num = Number(precio);
-  return !isNaN(num) && num > 0;
+  return !Number.isNaN(num) && num > 0;
 };
 
 // Helper para añadir URLs de imagen a un producto
@@ -31,7 +31,7 @@ const validarLongitud = (texto) => {
 
 const esIdValido = (id) => {
   const num = Number(id);
-  return !isNaN(num) && num > 0;
+  return !Number.isNaN(num) && num > 0;
 };
 
 const enriquecerProductos = (productos) => productos.map(enriquecerProducto);
@@ -124,8 +124,8 @@ export const getProductoById = async (req, res) => {
 export const filtrarProductos = async (req, res) => {
   try {
     const filtros = {
-      precio_min: req.query.precio_min ? parseFloat(req.query.precio_min) : undefined,
-      precio_max: req.query.precio_max ? parseFloat(req.query.precio_max) : undefined,
+      precio_min: req.query.precio_min ? Number.parseFloat(req.query.precio_min) : undefined,
+      precio_max: req.query.precio_max ? Number.parseFloat(req.query.precio_max) : undefined,
       marca: req.query.marca,
       color: req.query.color,
       material: req.query.material,
@@ -133,13 +133,13 @@ export const filtrarProductos = async (req, res) => {
       busqueda: req.query.q
     };
 
-    if (filtros.precio_min !== undefined && (isNaN(filtros.precio_min) || filtros.precio_min < 0)) {
+    if (filtros.precio_min !== undefined && (Number.isNaN(filtros.precio_min) || filtros.precio_min < 0)) {
       return res.status(400).json({
         success: false,
         message: 'El precio mínimo debe ser un número mayor o igual a 0'
       });
     }
-    if (filtros.precio_max !== undefined && (isNaN(filtros.precio_max) || filtros.precio_max < 0)) {
+    if (filtros.precio_max !== undefined && (Number.isNaN(filtros.precio_max) || filtros.precio_max < 0)) {
       return res.status(400).json({
         success: false,
         message: 'El precio máximo debe ser un número mayor o igual a 0'
@@ -193,7 +193,7 @@ export const getProductosByCategoria = async (req, res) => {
   try {
     const { id_categoria } = req.params;
 
-    if (!id_categoria || isNaN(Number(id_categoria))) {
+    if (!id_categoria || Number.isNaN(Number(id_categoria))) {
       return res.status(400).json({
         success: false,
         message: 'ID de categoría inválido'
