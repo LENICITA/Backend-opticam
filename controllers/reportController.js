@@ -29,7 +29,7 @@ const validarFecha = (fecha) => {
   if (!fecha || typeof fecha !== 'string') return false;
   if (!REGEX_FECHA.test(fecha)) return false;
   const date = new Date(`${fecha}T00:00:00`);
-  return !isNaN(date.getTime());
+  return !Number.isNaN(date.getTime());
 };
 
 const validarRangoFechas = (fechaInicio, fechaFin) => {
@@ -41,7 +41,7 @@ const validarRangoFechas = (fechaInicio, fechaFin) => {
 
 const validarLimite = (limite) => {
   const num = Number(limite);
-  if (isNaN(num)) return false;
+  if (Number.isNaN(num)) return false;
   if (!Number.isInteger(num)) return false;
   if (num < 1 || num > LIMITE_MAX) return false;
   return true;
@@ -141,7 +141,7 @@ export const reporteProductosMasVendidos = async (req, res) => {
     }
 
         let whereClause = '';
-        const replacements = { limite: parseInt(limite) };
+        const replacements = { limite: Number.parseInt(limite, 10) };
 
         if (fecha_inicio && fecha_fin) {
             whereClause = 'AND p.fecha_pedido BETWEEN :fecha_inicio AND :fecha_fin';
@@ -289,8 +289,8 @@ export const reporteEstadoPedidos = async (req, res) => {
         });
 
         const totales = results.reduce((acc, item) => {
-            acc.total_pedidos += parseInt(item.cantidad);
-            acc.monto_total += parseFloat(item.monto_total);
+            acc.total_pedidos += Number.parseInt(item.cantidad, 10);
+            acc.monto_total += Number.parseFloat(item.monto_total);
             return acc;
         }, { total_pedidos: 0, monto_total: 0 });
 
@@ -323,7 +323,7 @@ export const reporteClientesFrecuentes = async (req, res) => {
     }
 
         let whereClause = '';
-        const replacements = { limite: parseInt(limite) };
+        const replacements = { limite: Number.parseInt(limite, 10) };
 
         if (fecha_inicio && fecha_fin) {
             whereClause = 'AND p.fecha_pedido BETWEEN :fecha_inicio AND :fecha_fin';
@@ -495,8 +495,8 @@ export const reporteVentasPorCategoria = async (req, res) => {
         });
 
         const totales = results.reduce((acc, item) => {
-            acc.total_unidades += parseInt(item.unidades_vendidas || 0);
-            acc.total_ingresos += parseFloat(item.ingresos || 0);
+            acc.total_unidades += Number.parseInt(item.unidades_vendidas || 0, 10);
+            acc.total_ingresos += Number.parseFloat(item.ingresos || 0);
             return acc;
         }, { total_unidades: 0, total_ingresos: 0 });
 
@@ -564,7 +564,7 @@ export const reporteAnalisisFormulas = async (req, res) => {
                 distribucion_condiciones: results,
                 tendencia_mensual: tendencia,
                 estadisticas_estado: estadisticas,
-                total_formulas_aprobadas: results.reduce((acc, item) => acc + parseInt(item.cantidad), 0)
+                total_formulas_aprobadas: results.reduce((acc, item) => acc + Number.parseInt(item.cantidad, 10), 0)
             }
         });
 
@@ -760,14 +760,14 @@ const obtenerDatosInventarioSQL = async () => {
     const productos = await Inventario.getAll();
 
     const totalProductos = productos.length;
-    const valorTotal = productos.reduce((sum, p) => sum + (parseFloat(p.precio) || 0), 0);
+    const valorTotal = productos.reduce((sum, p) => sum + (Number.parseFloat(p.precio) || 0), 0);
 
     const porCategoria = {};
     productos.forEach(p => {
         const cat = p.tipo_categoria || 'Sin categoría';
         if (!porCategoria[cat]) porCategoria[cat] = { cantidad: 0, valor: 0 };
         porCategoria[cat].cantidad++;
-        porCategoria[cat].valor += parseFloat(p.precio) || 0;
+        porCategoria[cat].valor += Number.parseFloat(p.precio) || 0;
     });
 
     return {
@@ -924,8 +924,8 @@ const obtenerEstadoPedidosSQL = async (replacements) => {
     });
 
     const totales = detalle.reduce((acc, item) => {
-        acc.total_pedidos += parseInt(item.cantidad);
-        acc.monto_total += parseFloat(item.monto_total);
+        acc.total_pedidos += Number.parseInt(item.cantidad, 10);
+        acc.monto_total += Number.parseFloat(item.monto_total);
         return acc;
     }, { total_pedidos: 0, monto_total: 0 });
 
@@ -955,8 +955,8 @@ const obtenerVentasCategoriaSQL = async (replacements) => {
     });
 
     const totales = detalle.reduce((acc, item) => {
-        acc.total_unidades += parseInt(item.unidades_vendidas || 0);
-        acc.total_ingresos += parseFloat(item.ingresos || 0);
+        acc.total_unidades += Number.parseInt(item.unidades_vendidas || 0, 10);
+        acc.total_ingresos += Number.parseFloat(item.ingresos || 0);
         return acc;
     }, { total_unidades: 0, total_ingresos: 0 });
 
