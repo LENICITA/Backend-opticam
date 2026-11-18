@@ -1,5 +1,6 @@
 // controllers/contactoController.js
 import manejarErrorValidacion from '../utils/manejarErrores.js';
+import { escaparHTML } from '../utils/sanitizar.js';
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 
@@ -8,7 +9,7 @@ dotenv.config();
 // CONFIGURACIÓN SMTP
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT) || 587,
+  port: Number.parseInt(process.env.SMTP_PORT, 10) || 587,
   secure: false,
   auth: {
     user: process.env.SMTP_USER,
@@ -25,7 +26,7 @@ transporter.verify((error) => {
 });
 
 // VALIDADORES REUTILIZABLES
-const REGEX_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const REGEX_EMAIL = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 const REGEX_TELEFONO = /^[0-9+\-\s()]{7,20}$/;
 
 const LONGITUDES = {
@@ -39,17 +40,6 @@ const LONGITUDES = {
 
 const validarEmail = (email) => REGEX_EMAIL.test(String(email).trim());
 const validarTelefono = (telefono) => REGEX_TELEFONO.test(String(telefono).trim());
-
-// HELPER: Escapar HTML (evita inyecciones en el correo)
-const escaparHTML = (texto) => {
-  if (!texto) return '';
-  return String(texto)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-};
 
 // ENVIAR MENSAJE DE CONTACTO
 export const enviarMensaje = async (req, res) => {
