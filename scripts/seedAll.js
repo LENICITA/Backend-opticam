@@ -1199,4 +1199,7 @@ const seedAll = async () => {
   }
 };
 // EJECUTA
-seedAll();
+seedAll().catch((error) => {
+  console.error('Error fatal en el seed:', error);
+  process.exit(1);
+});
