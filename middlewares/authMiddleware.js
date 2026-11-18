@@ -4,10 +4,9 @@ import { Usuario, Role } from '../models/relaciones.js';
 
 export const authMiddleware = async (req, res, next) => {
     try {
-        console.log('Headers recibidos:', req.headers);
-        
-        const authHeader = req.headers.authorization;
-        console.log('authHeader:', authHeader);
+console.log('Headers recibidos:', encodeURIComponent(JSON.stringify(req.headers)));
+const authHeader = req.headers.authorization;
+console.log('authHeader:', encodeURIComponent(authHeader || ''));
         
         if (!authHeader) {
             console.log('No hay header Authorization');
@@ -25,8 +24,8 @@ export const authMiddleware = async (req, res, next) => {
             });
         }
 
-        const token = authHeader.split(' ')[1];
-        console.log('Token extraído:', token ? token.substring(0, 30) + '...' : 'No token');
+                const token = authHeader.split(' ')[1];
+        console.log('Token extraído:', encodeURIComponent(token ? token.substring(0, 30) + '...' : 'No token'));
 
         if (!token || token === 'null' || token === 'undefined' || token === '') {
             console.log('Token vacío o inválido');
@@ -47,7 +46,7 @@ export const authMiddleware = async (req, res, next) => {
         let decoded;
         try {
             decoded = jwt.verify(token, process.env.JWT_SECRET);
-            console.log('Token decodificado:', decoded);
+            console.log('Token decodificado:', encodeURIComponent(JSON.stringify(decoded)));
         } catch (jwtError) {
             console.error('Error al verificar token:', jwtError.message);
             
