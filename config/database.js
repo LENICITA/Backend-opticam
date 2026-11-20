@@ -1,5 +1,8 @@
 import { Sequelize } from 'sequelize';
-import mysql2 from 'mysql2';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const mysql2 = require('mysql2');
 
 
 const sequelize = new Sequelize(
