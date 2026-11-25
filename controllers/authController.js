@@ -290,7 +290,8 @@ const usuario = await Usuario.findOne({
             reset_token_expiry: resetTokenExpiry
         });
 
-        const resetLink = `http://192.168.0.7:5000/reset-password?token=${resetToken}`;
+        const FRONTEND_URL = (process.env.FRONTEND_URL || 'https://frontend-opticam.vercel.app').replace(/\/+$/, '');
+        const resetLink = `${FRONTEND_URL}/restablecer-contrasena?token=${resetToken}`;
 
         // INTENTAR ENVIAR AL USUARIO PRIMERO
 
@@ -364,16 +365,27 @@ const enviarCorreoRecuperacion = async ({ emailDestino, nombre, resetLink, email
 
     let subject = '🔐 Recuperación de contraseña - Óptica Balamb';
     let html = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
-            <h2 style="color: #B90F0F;">🔐 Recuperación de contraseña</h2>
-            <p>Hola <strong>${nombre}</strong>,</p>
-            <p>Copia y pega el siguiente enlace en la app:</p>
-            <div style="background-color: #f0f0f0; padding: 15px; border-radius: 8px; word-break: break-all; font-family: monospace;">
-                ${resetLink}
-            </div>
-            <p>Expira en 1 hora.</p>
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+        <h2 style="color: #B90F0F;">🔐 Recuperación de contraseña</h2>
+        <p>Hola <strong>${nombre}</strong>,</p>
+        <p>Recibimos una solicitud para restablecer tu contraseña. Haz clic en el siguiente botón:</p>
+
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="${resetLink}"
+               style="background-color: #B90F0F; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; display: inline-block;">
+                Restablecer contraseña
+            </a>
         </div>
-    `;
+
+        <p style="color: #666; font-size: 13px;">Si el botón no funciona, copia y pega este enlace:</p>
+        <p style="background-color: #f0f0f0; padding: 12px; border-radius: 8px; word-break: break-all; font-family: monospace; font-size: 12px;">
+            ${resetLink}
+        </p>
+
+        <p style="color: #666; font-size: 13px;">Este enlace expira en 1 hora.</p>
+        <p style="color: #666; font-size: 13px;">Si no solicitaste este cambio, ignora este correo.</p>
+    </div>
+`;
 
     if (esFalso) {
         subject = '⚠️ [ADMIN] Email no existe - Óptica Balamb';
