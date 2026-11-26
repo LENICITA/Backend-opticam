@@ -239,12 +239,23 @@ export const asignarPrecioFormula = async (req, res) => {
       return error400(res, 'El campo costo es requerido');
     }
 
-    if (Number.isNaN(Number(costo))) {
+    const costoStr = String(costo).trim();
+    if (!/^\d+(\.\d+)?$/.test(costoStr)) {
       return error400(res, 'El costo debe ser un número válido');
     }
 
-    if (Number(costo) <= 0) {
+    const costoNormalizado = Number(costoStr);
+
+    if (Number.isNaN((costoNormalizado)) {
+      return error400(res, 'El costo debe ser un número válido');
+    }
+
+    if (costoNormalizado <= 0) {
       return error400(res, 'El costo debe ser mayor a 0');
+    }
+
+    if (/^0\d+/.test(costoStr)) {
+      return error400(res, 'El costo no debe contener ceros a la izquierda');
     }
 
     if (estado && !validarEstado(estado)) {
@@ -261,7 +272,7 @@ export const asignarPrecioFormula = async (req, res) => {
     }
 
     const estadoFinal = estado || 'Aprobado';
-    await FormulaModelo.asignarPrecio(id, Number(costo), estadoFinal);
+    await FormulaModelo.asignarPrecio(id, costoNormalizado, estadoFinal);
 
     const formulaActualizada = await FormulaModelo.obtenerPorId(id);
 
