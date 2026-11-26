@@ -240,22 +240,18 @@ export const asignarPrecioFormula = async (req, res) => {
     }
 
     const costoStr = String(costo).trim();
-    if (!/^\d+(\.\d+)?$/.test(costoStr)) {
-      return error400(res, 'El costo debe ser un número válido');
-    }
-
-    const costoNormalizado = Number(costoStr);
-
-    if (Number.isNaN((costoNormalizado)) {
-      return error400(res, 'El costo debe ser un número válido');
-    }
-
-    if (costoNormalizado <= 0) {
-      return error400(res, 'El costo debe ser mayor a 0');
+    if (!/^\d+$/.test(costoStr)) {
+      return error400(res, 'El costo debe ser un número entero válido');
     }
 
     if (/^0\d+/.test(costoStr)) {
       return error400(res, 'El costo no debe contener ceros a la izquierda');
+    }
+
+    const costoNormalizado = Number(costoStr);
+
+    if (costoNormalizado <= 0) {
+      return error400(res, 'El costo debe ser mayor a 0');
     }
 
     if (estado && !validarEstado(estado)) {
