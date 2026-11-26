@@ -124,27 +124,17 @@ export const getProductoById = async (req, res) => {
 export const filtrarProductos = async (req, res) => {
   try {
     const filtros = {
-      precio_min: req.query.precio_min ? Number.parseFloat(req.query.precio_min) : undefined,
-      precio_max: req.query.precio_max ? Number.parseFloat(req.query.precio_max) : undefined,
+      precio_min: req.query.precio_min ? Number(req.query.precio_min) : undefined,
+      precio_max: req.query.precio_max ? Number(req.query.precio_max) : undefined,
       marca: req.query.marca,
       color: req.query.color,
       material: req.query.material,
-      id_categoria: req.query.id_categoria,
+      id_categoria: req.query.id_categoria ? Number(req.query.id_categoria) : undefined,
       busqueda: req.query.q
     };
 
-    if (filtros.precio_min !== undefined && (Number.isNaN(filtros.precio_min) || filtros.precio_min < 0)) {
-      return res.status(400).json({
-        success: false,
-        message: 'El precio mínimo debe ser un número mayor o igual a 0'
-      });
-    }
-    if (filtros.precio_max !== undefined && (Number.isNaN(filtros.precio_max) || filtros.precio_max < 0)) {
-      return res.status(400).json({
-        success: false,
-        message: 'El precio máximo debe ser un número mayor o igual a 0'
-      });
-    }
+    if (filtros.precio_min !== undefined && Number.isNaN(filtros.precio_min)) delete filtros.precio_min;
+    if (filtros.precio_max !== undefined && Number.isNaN(filtros.precio_max)) delete filtros.precio_max;
 
     const results = await Inventario.filtrar(filtros);
 
@@ -153,7 +143,6 @@ export const filtrarProductos = async (req, res) => {
     res.json({
       success: true,
       count: productosConImagen.length,
-      filtros: filtros,
       productos: productosConImagen
     });
   } catch (error) {
