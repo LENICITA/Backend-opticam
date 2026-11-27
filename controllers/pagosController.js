@@ -8,7 +8,10 @@ import { boldClient } from '../config/bold.js';
 
 const esDesarrollo = process.env.NODE_ENV === 'development' || process.env.BOLD_MODO === 'TEST';
 
-const BACKEND_PUBLIC_URL = process.env.BACKEND_PUBLIC_URL || 'https://TU_BACKEND_VERCEL.app';
+const BACKEND_PUBLIC_URL = process.env.BACKEND_PUBLIC_URL || 'https://tu_backend_vercel.app';
+
+// ✅ URL del frontend a la que Bold redirige al usuario tras pagar
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://frontend-opticam.vercel.app';
 
 const error400 = (res, message) => res.status(400).json({ success: false, message });
 const error403 = (res, message) => res.status(403).json({ success: false, message });
@@ -92,44 +95,32 @@ export const crearPago = async (req, res) => {
     const { id_pedido, eleccion_pago, canal_pago = 'Bold', monto } = req.body;
     const usuario = req.user;
 
-    // Validar campos requeridos
     if (!id_pedido || !eleccion_pago || !monto) {
       return error400(res, 'Faltan campos requeridos: id_pedido, eleccion_pago, monto');
     }
-
     if (!validarId(id_pedido)) {
       return error400(res, 'El ID del pedido debe ser un número válido');
     }
-
     if (!validarEleccionPago(eleccion_pago)) {
       return error400(res, 'eleccion_pago debe ser 50% o 100%');
     }
-
     if (!validarMonto(monto)) {
       return error400(res, 'El monto debe ser un número mayor a 0');
     }
 
-    // Verificar que el pedido existe
     const [pedido] = await sequelize.query(
       'SELECT * FROM PEDIDOS WHERE id_pedido = ?',
       { replacements: [id_pedido], type: sequelize.QueryTypes.SELECT }
     );
 
-    if (!pedido) {
-      return error404(res, 'Pedido no encontrado');
-    }
+    if (!pedido) return error404(res, 'Pedido no encontrado');
 
-    // VERIFICAR QUE EL PEDIDO PERTENEZCA AL USUARIO
     if (pedido.id_usuario !== usuario.id) {
       return error403(res, 'No puedes pagar un pedido que no te pertenece');
     }
-
-    // Verificar que el monto no exceda el total del pedido
     if (monto > pedido.total) {
       return error400(res, `El monto no puede exceder el total del pedido (${pedido.total})`);
     }
-
-    // Verificar el estado del pedido
     if (pedido.estado === 'Pagado') {
       return error400(res, 'Este pedido ya está pagado completamente');
     }
@@ -138,14 +129,12 @@ export const crearPago = async (req, res) => {
     if (eleccion_pago === '50%') {
       const totalPagado = await PagoModel.obtenerTotalPagado(id_pedido);
       const saldoRestante = pedido.total - totalPagado;
-
       const tieneAbono = await PagoModel.tieneAbono50(id_pedido);
 
       if (tieneAbono) {
         if (pedido.estado !== 'Abonado') {
           return error400(res, 'El pedido debe estar en estado ABONADO para pagar el saldo restante');
         }
-
         if (monto < saldoRestante) {
           return error400(res, `El saldo restante es ${saldoRestante}. Debes pagar esa cantidad para completar el pago`);
         }
@@ -154,7 +143,6 @@ export const crearPago = async (req, res) => {
         if (tieneCompleto) {
           return error400(res, 'Este pedido ya fue pagado completamente');
         }
-
         const monto50Esperado = pedido.total / 2;
         const margenError = 100;
         if (Math.abs(monto - monto50Esperado) > margenError) {
@@ -167,12 +155,10 @@ export const crearPago = async (req, res) => {
     if (eleccion_pago === '100%') {
       const totalPagado = await PagoModel.obtenerTotalPagado(id_pedido);
       const saldoRestante = pedido.total - totalPagado;
-
       const tieneCompleto = await PagoModel.tienePagoCompleto(id_pedido);
       if (tieneCompleto) {
         return error400(res, 'Este pedido ya fue pagado completamente');
       }
-
       const tieneAbono = await PagoModel.tieneAbono50(id_pedido);
       if (tieneAbono) {
         if (monto < saldoRestante) {
@@ -185,14 +171,14 @@ export const crearPago = async (req, res) => {
       }
     }
 
+    const externalReference = generarExternalReference(id_pedido, eleccion_pago);
+
     // ==========================================
-    //  SIMULAR PAGO
+    //  SIMULAR PAGO (solo desarrollo)
     // ==========================================
     if (esDesarrollo) {
-
       const bold_link = `https://bold.co/demo/pago-${id_pedido}-${Date.now()}`;
       const payment_link = `LNK_DEMO_${Date.now()}`;
-      const externalReference = generarExternalReference(id_pedido, eleccion_pago);
 
       const nuevoId = await PagoModel.crear({
         id_pedido,
@@ -227,25 +213,20 @@ export const crearPago = async (req, res) => {
     // ==========================================
     // CONEXIÓN REAL CON BOLD
     // ==========================================
-
-    // Calcular IVA (19%)
     const valorIva = Math.round(monto * 0.19);
     const baseGravable = monto - valorIva;
 
-    const callbackUrl = `${BACKEND_PUBLIC_URL}/api/pagos/callback`;
-    const externalReference = generarExternalReference(id_pedido, eleccion_pago);
+    // ✅ Redirigir al usuario al FRONTEND (no al backend)
+    // La confirmación real la hace el Webhook en /api/pagos/webhook
+    const callbackUrl = `${FRONTEND_URL}/mis-pedidos`;
 
     const boldResponse = await boldClient.post('/online/link/v1', {
-      amount_type: "CLOSE",
+      amount_type: 'CLOSE',
       amount: {
-        currency: "COP",
+        currency: 'COP',
         total_amount: monto,
         taxes: [
-          {
-            type: "VAT",
-            base: baseGravable,
-            value: valorIva
-          }
+          { type: 'VAT', base: baseGravable, value: valorIva }
         ],
         tip_amount: 0
       },
@@ -267,7 +248,7 @@ export const crearPago = async (req, res) => {
       bold_link: bold_link
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: 'Link de pago generado exitosamente',
       data: {
@@ -283,10 +264,11 @@ export const crearPago = async (req, res) => {
   }
 };
 
-// ========== CALLBACK DE BOLD (RETORNO DEL USUARIO) ==========
+// ========== CALLBACK DE BOLD (RESPALDO / REDIRECCIÓN ANTIGUA) ==========
+// Ya no se usa como redirección del usuario (ahora va al frontend).
+// Se mantiene por si Bold decide llamarlo o si quieres usarlo como respaldo.
 export const callbackBold = async (req, res) => {
   try {
-
     const { bold_transaction_id, reference } = req.query;
 
     const transaccionSegura = escaparHTML(bold_transaction_id || 'N/A');
@@ -294,7 +276,6 @@ export const callbackBold = async (req, res) => {
 
     if (reference) {
       const pago = await PagoModel.obtenerPorExternalReference(reference);
-
       if (pago && pago.estado !== 'Confirmado') {
         if (bold_transaction_id && !pago.bold_payment_id) {
           await pago.update({ bold_payment_id: bold_transaction_id });
@@ -303,33 +284,11 @@ export const callbackBold = async (req, res) => {
       }
     }
 
-    res.send(`
-      <!DOCTYPE html>
-      <html lang="es">
-        <head>
-          <meta charset="UTF-8">
-          <title>Pago procesado</title>
-          <style>
-            body { font-family: sans-serif; text-align: center; padding: 50px; }
-            h1 { color: #28a745; }
-          </style>
-        </head>
-        <body>
-          <h1>Pago procesado</h1>
-          <p>Transacción: ${transaccionSegura}</p>
-          <p>Referencia: ${referenciaSegura}</p>
-          <p>Serás redirigido en unos segundos...</p>
-          <script>
-            setTimeout(() => {
-              window.location.href = 'https://TU_FRONTEND_VERCEL.app/mis-pedidos';
-            }, 3000);
-          </script>
-        </body>
-      </html>
-    `);
+    // Redirigir al frontend en lugar de mostrar HTML del backend
+    return res.redirect(`${FRONTEND_URL}/mis-pedidos`);
   } catch (error) {
     console.error('Error en callback de Bold:', error);
-    res.status(500).send('<h1>Error al procesar el callback</h1>');
+    return res.redirect(`${FRONTEND_URL}/`);
   }
 };
 
@@ -338,17 +297,16 @@ export const webhookBold = async (req, res) => {
   try {
     console.log('Webhook payload:', JSON.stringify(req.body));
 
-    // (Opcional) Verificación de firma
-    const signature = req.headers['x-bold-signature'];
-    const secretKey = process.env.BOLD_SECRET_KEY;
-
-    if (signature && secretKey) {
-      const rawBody = JSON.stringify(req.body);
-      if (!verificarFirmaBold(rawBody, signature, secretKey)) {
-        console.error('Webhook: firma inválida');
-        return res.status(200).json({ received: true });
-      }
-    }
+    // (Opcional) Verificación de firma — descomenta cuando estés en producción
+    // const signature = req.headers['x-bold-signature'];
+    // const secretKey = process.env.BOLD_SECRET_KEY;
+    // if (signature && secretKey) {
+    //   const rawBody = JSON.stringify(req.body);
+    //   if (!verificarFirmaBold(rawBody, signature, secretKey)) {
+    //     console.error('Webhook: firma inválida');
+    //     return res.status(200).json({ received: true });
+    //   }
+    // }
 
     const { type, data } = req.body || {};
 
@@ -394,20 +352,15 @@ export const webhookBold = async (req, res) => {
 export const confirmarPago = async (req, res) => {
   try {
     const { id } = req.params;
-
     if (!validarIdOError(id, res, 'ID de pago inválido')) return;
 
     const pago = await PagoModel.obtenerPorId(id);
-    if (!pago) {
-      return error404(res, 'Pago no encontrado');
-    }
-
+    if (!pago) return error404(res, 'Pago no encontrado');
     if (pago.estado === 'Confirmado') {
       return error400(res, 'El pago ya está confirmado');
     }
 
     await PagoModel.confirmarPago(id);
-
     const pagoActualizado = await PagoModel.obtenerPorId(id);
 
     const [pedido] = await sequelize.query(
@@ -416,20 +369,11 @@ export const confirmarPago = async (req, res) => {
     );
 
     let mensaje = '';
-    if (pedido.estado === 'Pagado') {
-      mensaje = 'El pedido ha sido pagado completamente';
-    } else if (pedido.estado === 'Abonado') {
-      mensaje = 'Abono del 50% confirmado. El pedido está en estado ABONADO';
-    } else {
-      mensaje = `Pago confirmado. Estado actual del pedido: ${pedido.estado}`;
-    }
+    if (pedido.estado === 'Pagado') mensaje = 'El pedido ha sido pagado completamente';
+    else if (pedido.estado === 'Abonado') mensaje = 'Abono del 50% confirmado. El pedido está en estado ABONADO';
+    else mensaje = `Pago confirmado. Estado actual del pedido: ${pedido.estado}`;
 
-    res.json({
-      success: true,
-      message: mensaje,
-      data: pagoActualizado
-    });
-
+    res.json({ success: true, message: mensaje, data: pagoActualizado });
   } catch (error) {
     return manejarErrorValidacion(error, res);
   }
@@ -440,28 +384,23 @@ export const rechazarPago = async (req, res) => {
   try {
     const { id } = req.params;
     const { motivo } = req.body;
-
     if (!validarIdOError(id, res, 'ID de pago inválido')) return;
 
     const pago = await PagoModel.obtenerPorId(id);
-    if (!pago) {
-      return error404(res, 'Pago no encontrado');
-    }
-
+    if (!pago) return error404(res, 'Pago no encontrado');
     if (pago.estado === 'Confirmado') {
       return error400(res, 'No se puede rechazar un pago ya confirmado');
     }
 
     await PagoModel.rechazarPago(id);
-
     const pagoActualizado = await PagoModel.obtenerPorId(id);
+
     res.json({
       success: true,
       message: 'Pago rechazado',
       motivo: motivo || 'No especificado',
       data: pagoActualizado
     });
-
   } catch (error) {
     return manejarErrorValidacion(error, res);
   }
@@ -471,17 +410,13 @@ export const rechazarPago = async (req, res) => {
 export const verificarSaldoPedido = async (req, res) => {
   try {
     const { pedidoId } = req.params;
-
     if (!validarIdOError(pedidoId, res, 'ID de pedido inválido')) return;
 
     const [pedido] = await sequelize.query(
       'SELECT * FROM PEDIDOS WHERE id_pedido = ?',
       { replacements: [pedidoId], type: sequelize.QueryTypes.SELECT }
     );
-
-    if (!pedido) {
-      return error404(res, 'Pedido no encontrado');
-    }
+    if (!pedido) return error404(res, 'Pedido no encontrado');
 
     const totalPagado = await PagoModel.obtenerTotalPagado(pedidoId);
     const tieneAbono = await PagoModel.tieneAbono50(pedidoId);
@@ -489,11 +424,8 @@ export const verificarSaldoPedido = async (req, res) => {
     const saldoPendiente = pedido.total - totalPagado;
 
     let estadoPago = 'SIN_PAGO';
-    if (tieneCompleto || saldoPendiente <= 0) {
-      estadoPago = 'PAGADO_COMPLETO';
-    } else if (tieneAbono) {
-      estadoPago = 'ABONADO_50';
-    }
+    if (tieneCompleto || saldoPendiente <= 0) estadoPago = 'PAGADO_COMPLETO';
+    else if (tieneAbono) estadoPago = 'ABONADO_50';
 
     res.json({
       success: true,
@@ -506,7 +438,6 @@ export const verificarSaldoPedido = async (req, res) => {
         tiene_pago_completo: tieneCompleto
       }
     });
-
   } catch (error) {
     return manejarErrorValidacion(error, res);
   }
