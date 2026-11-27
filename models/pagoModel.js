@@ -75,11 +75,10 @@ const Pago = sequelize.define('Pago', {
     allowNull: true,
     comment: 'Referencia LNK_xxx que devuelve Bold al crear el link'
   },
-  // ✅ NUEVO CAMPO: referencia que TÚ envías a Bold y que regresa en el Webhook
   external_reference: {
     type: DataTypes.STRING(300),
     allowNull: true,
-    comment: 'Referencia propia enviada a Bold; llega en el webhook como data.reference'
+    comment: 'Referencia propia enviada a Bold; regresa en el webhook como data.reference'
   },
   bold_payment_id: {
     type: DataTypes.STRING(300),
@@ -101,6 +100,9 @@ const PagoModel = {
 
   // ========== CLIENTE ==========
 
+  /**
+   * Crear un nuevo pago
+   */
   crear: async (data) => {
     const pago = await Pago.create({
       id_pedido: data.id_pedido,
@@ -116,6 +118,9 @@ const PagoModel = {
     return pago.id_pago;
   },
 
+  /**
+   * Obtener pagos de un pedido
+   */
   obtenerPorPedido: async (id_pedido) => {
     const pagos = await Pago.findAll({
       where: { id_pedido },
@@ -124,6 +129,9 @@ const PagoModel = {
     return pagos;
   },
 
+  /**
+   * Obtener pago por ID
+   */
   obtenerPorId: async (id_pago) => {
     const pago = await Pago.findByPk(id_pago);
     return pago;
@@ -134,25 +142,30 @@ const PagoModel = {
    */
   obtenerPorExternalReference: async (externalReference) => {
     if (!externalReference) return null;
-    const pago = await Pago.findOne({
+    return await Pago.findOne({
       where: { external_reference: externalReference }
     });
-    return pago;
   },
 
   /**
-   * Buscar pago por bold_reference (LNK_xxx)
+   * Buscar pago por bold_reference (LNK_xxx) — fallback
    */
   obtenerPorBoldReference: async (boldReference) => {
     if (!boldReference) return null;
-    const pago = await Pago.findOne({
+    return await Pago.findOne({
       where: { bold_reference: boldReference }
     });
-    return pago;
   },
 
   // ========== BOLD (WEBHOOKS) ==========
 
+  /**
+   * Bold confirma el pago
+   * - Si es 100% → pedido a Pagado
+   * - Si es 50% y es el primer pago → pedido a Abonado
+   * - Si es 50% y ya tiene abono previo → pedido a Pagado (saldo restante)
+   * - Siempre verificar si el total pagado >= total del pedido
+   */
   confirmarPago: async (id_pago) => {
     const pago = await Pago.findByPk(id_pago);
     if (!pago) return false;
@@ -220,6 +233,9 @@ const PagoModel = {
     return true;
   },
 
+  /**
+   * Bold rechaza el pago
+   */
   rechazarPago: async (id_pago) => {
     const pago = await Pago.findByPk(id_pago);
     if (!pago) return false;
@@ -229,6 +245,9 @@ const PagoModel = {
 
   // ========== UTILIDADES ==========
 
+  /**
+   * Obtener total pagado de un pedido (suma de todos los pagos confirmados)
+   */
   obtenerTotalPagado: async (id_pedido) => {
     const [result] = await sequelize.query(
       `SELECT COALESCE(SUM(monto), 0) as total_pagado 
@@ -239,6 +258,9 @@ const PagoModel = {
     return Number.parseFloat(result?.total_pagado) || 0;
   },
 
+  /**
+   * Verificar si el pedido tiene un pago completo (100%)
+   */
   tienePagoCompleto: async (id_pedido) => {
     const [pago] = await sequelize.query(
       `SELECT * FROM PAGOS 
@@ -248,6 +270,9 @@ const PagoModel = {
     return !!pago;
   },
 
+  /**
+   * Verificar si el pedido tiene un abono del 50%
+   */
   tieneAbono50: async (id_pedido) => {
     const [pago] = await sequelize.query(
       `SELECT * FROM PAGOS 
@@ -257,6 +282,9 @@ const PagoModel = {
     return !!pago;
   },
 
+  /**
+   * Verificar si el pedido tiene pago completo por suma de abonos
+   */
   tienePagoCompletoPorSuma: async (id_pedido) => {
     const [pedido] = await sequelize.query(
       'SELECT total FROM PEDIDOS WHERE id_pedido = ?',
@@ -268,6 +296,9 @@ const PagoModel = {
     return totalPagado >= pedido.total;
   },
 
+  /**
+   * Verificar si el pedido tiene un abono del 50% previo (excluyendo un pago específico)
+   */
   tieneAbono50Previo: async (id_pedido, id_pagoExcluir) => {
     const [abonos] = await sequelize.query(
       `SELECT * FROM PAGOS 
