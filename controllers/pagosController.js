@@ -1,4 +1,5 @@
 // src/controllers/pagosController.js
+import crypto from 'crypto';
 import PagoModel from '../models/pagoModel.js';
 import manejarErrorValidacion from '../utils/manejarErrores.js';
 import { escaparHTML } from '../utils/sanitizar.js';
@@ -13,6 +14,12 @@ const error400 = (res, message) => res.status(400).json({ success: false, messag
 const error403 = (res, message) => res.status(403).json({ success: false, message });
 const error404 = (res, message) => res.status(404).json({ success: false, message });
 
+const validarId = (id) => {
+  if (id === undefined || id === null || id === '') return false;
+  const num = Number(id);
+  return !Number.isNaN(num) && num > 0 && Number.isInteger(num);
+};
+
 const validarIdOError = (id, res, mensaje = 'ID inválido') => {
   if (!validarId(id)) {
     error400(res, mensaje);
@@ -21,20 +28,39 @@ const validarIdOError = (id, res, mensaje = 'ID inválido') => {
   return true;
 };
 
-const validarId = (id) => {
-  if (id === undefined || id === null || id === '') return false;
-  const num = Number(id);
-  return !Number.isNaN(num) && num > 0 && Number.isInteger(num);
-};
-
-const validarEleccionPago = (eleccion) => {
-  return ['50%', '100%'].includes(eleccion);
-};
+const validarEleccionPago = (eleccion) => ['50%', '100%'].includes(eleccion);
 
 const validarMonto = (monto) => {
   if (monto === undefined || monto === null || monto === '') return false;
   const num = Number(monto);
   return !Number.isNaN(num) && num > 0;
+};
+
+/**
+ * Genera una referencia única para enviar a Bold
+ * Ej: PEDIDO12_50_1700000000000
+ */
+const generarExternalReference = (id_pedido, eleccion_pago) => {
+  const limpio = String(eleccion_pago).replace('%', '');
+  return `PEDIDO${id_pedido}_${limpio}_${Date.now()}`;
+};
+
+/**
+ * Verifica la firma del Webhook de Bold
+ * Bold envía x-bold-signature = HMAC-SHA256(secretKey, base64(rawBody))
+ */
+const verificarFirmaBold = (rawBody, signature, secretKey) => {
+  if (!signature || !secretKey) return false;
+  try {
+    const encoded = Buffer.from(rawBody).toString('base64');
+    const hashed = crypto.createHmac('sha256', secretKey).update(encoded).digest('hex');
+    const a = Buffer.from(hashed);
+    const b = Buffer.from(signature);
+    if (a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
+  } catch (e) {
+    return false;
+  }
 };
 
 // ========== OBTENER PAGOS POR PEDIDO ==========
@@ -166,6 +192,7 @@ export const crearPago = async (req, res) => {
 
       const bold_link = `https://bold.co/demo/pago-${id_pedido}-${Date.now()}`;
       const payment_link = `LNK_DEMO_${Date.now()}`;
+      const externalReference = generarExternalReference(id_pedido, eleccion_pago);
 
       const nuevoId = await PagoModel.crear({
         id_pedido,
@@ -173,6 +200,7 @@ export const crearPago = async (req, res) => {
         canal_pago,
         monto,
         bold_reference: payment_link,
+        external_reference: externalReference,
         bold_link: bold_link
       });
 
@@ -180,7 +208,7 @@ export const crearPago = async (req, res) => {
         try {
           await PagoModel.confirmarPago(nuevoId);
         } catch (err) {
-          console.error(' Error auto-confirmando pago:', err);
+          console.error('Error auto-confirmando pago:', err);
         }
       }, 2000);
 
@@ -205,6 +233,7 @@ export const crearPago = async (req, res) => {
     const baseGravable = monto - valorIva;
 
     const callbackUrl = `${BACKEND_PUBLIC_URL}/api/pagos/callback`;
+    const externalReference = generarExternalReference(id_pedido, eleccion_pago);
 
     const boldResponse = await boldClient.post('/online/link/v1', {
       amount_type: "CLOSE",
@@ -220,12 +249,11 @@ export const crearPago = async (req, res) => {
         ],
         tip_amount: 0
       },
-      reference: `PEDIDO${id_pedido}${eleccion_pago.replace('%', '')}${Date.now()}`,
+      reference: externalReference,
       description: `Pago ${eleccion_pago} del pedido #${id_pedido}`,
       payer_email: usuario.email || 'cliente@email.com',
       callback_url: callbackUrl
     });
-
 
     const { payment_link, url: bold_link } = boldResponse.data.payload;
 
@@ -235,6 +263,7 @@ export const crearPago = async (req, res) => {
       canal_pago,
       monto,
       bold_reference: payment_link,
+      external_reference: externalReference,
       bold_link: bold_link
     });
 
@@ -264,12 +293,12 @@ export const callbackBold = async (req, res) => {
     const referenciaSegura = escaparHTML(reference || 'N/A');
 
     if (reference) {
-      const [pago] = await sequelize.query(
-        'SELECT id_pago FROM PAGOS WHERE bold_reference = ? LIMIT 1',
-        { replacements: [reference], type: sequelize.QueryTypes.SELECT }
-      );
+      const pago = await PagoModel.obtenerPorExternalReference(reference);
 
-      if (pago && pago.id_pago) {
+      if (pago && pago.estado !== 'Confirmado') {
+        if (bold_transaction_id && !pago.bold_payment_id) {
+          await pago.update({ bold_payment_id: bold_transaction_id });
+        }
         await PagoModel.confirmarPago(pago.id_pago);
       }
     }
@@ -304,7 +333,64 @@ export const callbackBold = async (req, res) => {
   }
 };
 
-// ========== CONFIRMAR PAGO (WEBHOOK DE BOLD) ==========
+// ========== WEBHOOK DE BOLD (NOTIFICACIÓN SERVIDOR-SERVIDOR) ==========
+export const webhookBold = async (req, res) => {
+  try {
+    console.log('Webhook payload:', JSON.stringify(req.body));
+
+    // (Opcional) Verificación de firma
+    const signature = req.headers['x-bold-signature'];
+    const secretKey = process.env.BOLD_SECRET_KEY;
+
+    if (signature && secretKey) {
+      const rawBody = JSON.stringify(req.body);
+      if (!verificarFirmaBold(rawBody, signature, secretKey)) {
+        console.error('Webhook: firma inválida');
+        return res.status(200).json({ received: true });
+      }
+    }
+
+    const { type, data } = req.body || {};
+
+    if (type !== 'SALE_APPROVED') {
+      return res.status(200).json({ received: true });
+    }
+
+    const reference = data?.reference;
+    const paymentId = data?.payment_id || data?.id;
+
+    if (!reference) {
+      console.error('Webhook: sin reference en payload');
+      return res.status(200).json({ received: true });
+    }
+
+    let pago = await PagoModel.obtenerPorExternalReference(reference);
+    if (!pago) pago = await PagoModel.obtenerPorBoldReference(reference);
+
+    if (!pago) {
+      console.error(`Webhook: no se encontró pago para reference=${reference}`);
+      return res.status(200).json({ received: true });
+    }
+
+    if (pago.estado === 'Confirmado') {
+      return res.status(200).json({ received: true });
+    }
+
+    if (paymentId && !pago.bold_payment_id) {
+      await pago.update({ bold_payment_id: paymentId });
+    }
+
+    await PagoModel.confirmarPago(pago.id_pago);
+    console.log(`Webhook: pago ${pago.id_pago} confirmado (reference=${reference})`);
+
+    return res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('Error en webhook Bold:', error);
+    return res.status(200).json({ received: true });
+  }
+};
+
+// ========== CONFIRMAR PAGO (MANUAL) ==========
 export const confirmarPago = async (req, res) => {
   try {
     const { id } = req.params;
@@ -349,7 +435,7 @@ export const confirmarPago = async (req, res) => {
   }
 };
 
-// ========== RECHAZAR PAGO (WEBHOOK DE BOLD) ==========
+// ========== RECHAZAR PAGO ==========
 export const rechazarPago = async (req, res) => {
   try {
     const { id } = req.params;
