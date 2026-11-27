@@ -8,6 +8,44 @@ const router = express.Router();
 // 1. PRIMERO: RUTAS ESPECÍFICAS (SIN PARÁMETROS DINÁMICOS)
 // ========================================
 
+// ===== WEBHOOK DE BOLD (PÚBLICO, SIN AUTH) =====
+// ⚠️ Esta es la URL que debes registrar en el Panel de Bold:
+// https://tu-backend.vercel.app/api/pagos/webhook
+/**
+ * @swagger
+ * /api/pagos/webhook:
+ *   post:
+ *     summary: Webhook de Bold (notificación servidor-servidor)
+ *     description: |
+ *       Endpoint llamado por Bold cuando el estado de una transacción cambia.
+ *       Procesa eventos `SALE_APPROVED`, busca el pago por `external_reference`
+ *       y lo confirma. Responde siempre 200 para evitar reintentos masivos.
+ *     tags: [Pagos (Webhook)]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               type:
+ *                 type: string
+ *                 example: SALE_APPROVED
+ *               data:
+ *                 type: object
+ *                 properties:
+ *                   reference:
+ *                     type: string
+ *                     example: PEDIDO12_50_1700000000000
+ *                   payment_id:
+ *                     type: string
+ *                     example: PAY_1234567890
+ *     responses:
+ *       200:
+ *         description: Evento recibido (siempre responde 200, incluso si no se procesa)
+ */
+router.post('/webhook', pagosController.webhookBold);
+
 // CALLBACK DE BOLD (retorno del usuario tras pagar)
 router.get('/callback', pagosController.callbackBold);
 
@@ -187,17 +225,19 @@ router.get('/pedido/:pedidoId', authMiddleware, pagosController.obtenerPagosPorP
 router.post('/', authMiddleware, pagosController.crearPago);
 
 // ========================================
-// 3. ÚLTIMO: WEBHOOKS (también con parámetros)
+// 3. ÚLTIMO: CONFIRMACIÓN/RECHAZO MANUAL (ADMIN)
 // ========================================
 
-// Bold confirma el pago (webhook)
+// Confirmar pago manualmente (uso admin)
 /**
  * @swagger
  * /api/pagos/{id}/confirmar:
  *   put:
- *     summary: Confirmar un pago (Webhook Bold)
- *     description: Marca el pago como Confirmado y actualiza el estado del pedido según las reglas (Abonado o Pagado). Este endpoint es llamado por Bold.
- *     tags: [Pagos (Webhook)]
+ *     summary: Confirmar un pago manualmente (Admin)
+ *     description: Marca el pago como Confirmado y actualiza el estado del pedido según las reglas (Abonado o Pagado). Útil como respaldo cuando el Webhook no llega.
+ *     tags: [Pagos (Admin)]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -209,34 +249,25 @@ router.post('/', authMiddleware, pagosController.crearPago);
  *     responses:
  *       200:
  *         description: Pago confirmado
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: Abono del 50% confirmado. El pedido está en estado ABONADO
- *                 data:
- *                   $ref: '#/components/schemas/Pago'
  *       400:
  *         description: ID inválido o el pago ya estaba confirmado
+ *       401:
+ *         description: No autenticado
  *       404:
  *         description: Pago no encontrado
  */
-router.put('/:id/confirmar', pagosController.confirmarPago);
+router.put('/:id/confirmar', authMiddleware, pagosController.confirmarPago);
 
-// Bold rechaza el pago (webhook)
+// Rechazar pago manualmente (uso admin)
 /**
  * @swagger
  * /api/pagos/{id}/rechazar:
  *   put:
- *     summary: Rechazar un pago (Webhook Bold)
+ *     summary: Rechazar un pago manualmente (Admin)
  *     description: Marca un pago como Rechazado. No se puede rechazar un pago ya confirmado.
- *     tags: [Pagos (Webhook)]
+ *     tags: [Pagos (Admin)]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -258,27 +289,13 @@ router.put('/:id/confirmar', pagosController.confirmarPago);
  *     responses:
  *       200:
  *         description: Pago rechazado
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: Pago rechazado
- *                 motivo:
- *                   type: string
- *                   example: Fondos insuficientes
- *                 data:
- *                   $ref: '#/components/schemas/Pago'
  *       400:
  *         description: ID inválido o el pago ya está confirmado
+ *       401:
+ *         description: No autenticado
  *       404:
  *         description: Pago no encontrado
  */
-router.put('/:id/rechazar', pagosController.rechazarPago);
+router.put('/:id/rechazar', authMiddleware, pagosController.rechazarPago);
 
 export default router;
