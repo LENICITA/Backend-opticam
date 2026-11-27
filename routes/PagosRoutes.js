@@ -11,6 +11,15 @@ const router = express.Router();
 // ===== WEBHOOK DE BOLD (PÚBLICO, SIN AUTH) =====
 // ⚠️ Esta es la URL que debes registrar en el Panel de Bold:
 // https://tu_backend_vercel.app/api/pagos/webhook
+
+router.get('/webhook', (req, res) => {
+  res.json({
+    status: 'ok',
+    message: '✅ Webhook endpoint activo. Bold debe enviar POST aquí.',
+    method_esperado: 'POST',
+    url_completa: `${req.protocol}://${req.get('host')}/api/pagos/webhook`
+  });
+});
 router.post('/webhook', pagosController.webhookBold);
 
 // CALLBACK DE BOLD (respaldo; ya no se usa como redirección del usuario)
