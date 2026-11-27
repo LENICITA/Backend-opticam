@@ -25,11 +25,11 @@ export const boldClient = axios.create({
 // Interceptor para logging (opcional pero útil)
 boldClient.interceptors.request.use(
   (config) => {
-    console.log(`🚀 Bold Request: ${config.method.toUpperCase()} ${config.url}`);
+    console.log(`Bold Request: ${config.method.toUpperCase()} ${config.url}`);
     return config;
   },
   (error) => {
-    console.error('❌ Bold Request Error:', error);
+    console.error('Bold Request Error:', error);
     return Promise.reject(error);
   }
 );
